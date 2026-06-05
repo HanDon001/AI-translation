@@ -423,6 +423,30 @@ body::after {
   background: rgba(220,38,38,0.08);
 }
 
+/* 桌面字幕按钮 */
+.btn-desktop-subtitles {
+  width: 100%;
+  padding: 8px;
+  border: 1px dashed var(--border2);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-family: var(--sans);
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.btn-desktop-subtitles:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
 /* 术语表 */
 .glossary-row {
   display: flex;
@@ -1097,6 +1121,264 @@ body::after {
 .modal-btn.confirm:hover {
   box-shadow: 0 4px 12px rgba(2, 119, 189, 0.4);
   transform: translateY(-1px);
+}
+
+/* 浮窗按钮 */
+.btn-float {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg2);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.btn-float:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-light);
+}
+
+/* 翻译浮窗 */
+.float-window {
+  position: fixed;
+  width: 360px;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(18, 40, 61, 0.2);
+  z-index: 999;
+  animation: floatIn 0.3s ease;
+  user-select: none;
+}
+
+@keyframes floatIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* 默认样式 */
+.float-window.float-default {
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+
+.float-default .float-header {
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.float-default .float-title {
+  color: var(--fg);
+}
+
+.float-default .float-src .float-text {
+  color: var(--fg2);
+}
+
+.float-default .float-tgt .float-text {
+  color: var(--fg);
+}
+
+/* 暗黑样式 */
+.float-window.float-dark {
+  background: #1a1a2e;
+  border: 1px solid #2d2d44;
+}
+
+.float-dark .float-header {
+  background: #16162a;
+  border-bottom: 1px solid #2d2d44;
+}
+
+.float-dark .float-title {
+  color: #e0e0e0;
+}
+
+.float-dark .float-src .float-text {
+  color: #a0a0b0;
+}
+
+.float-dark .float-tgt .float-text {
+  color: #ffffff;
+}
+
+.float-dark .float-label {
+  color: #6060a0;
+}
+
+.float-dark .float-divider {
+  background: #2d2d44;
+}
+
+.float-dark .float-close-btn,
+.float-dark .float-style-btn {
+  color: #808090;
+}
+
+.float-dark .float-close-btn:hover {
+  color: #ff6b6b;
+}
+
+.float-dark .float-style-btn:hover {
+  color: #a78bfa;
+}
+
+/* 毛玻璃样式 */
+.float-window.float-glass {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.float-glass .float-header {
+  background: rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.float-glass .float-title {
+  color: #ffffff;
+}
+
+.float-glass .float-src .float-text {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.float-glass .float-tgt .float-text {
+  color: #ffffff;
+}
+
+.float-glass .float-label {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.float-glass .float-divider {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.float-glass .float-close-btn,
+.float-glass .float-style-btn {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.float-glass .float-close-btn:hover {
+  color: #ff6b6b;
+}
+
+.float-glass .float-style-btn:hover {
+  color: #a78bfa;
+}
+
+.float-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 12px 12px 0 0;
+  cursor: move;
+}
+
+.float-title {
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.float-title i {
+  color: var(--accent);
+}
+
+.float-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.float-style-btn,
+.float-close-btn {
+  background: none;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px;
+  transition: color 0.2s;
+}
+
+.float-close-btn:hover {
+  color: var(--warm);
+}
+
+.float-style-btn:hover {
+  color: var(--purple);
+}
+
+.float-body {
+  padding: 16px;
+}
+
+.float-src,
+.float-tgt {
+  margin-bottom: 4px;
+}
+
+.float-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.float-text {
+  font-size: 16px;
+  line-height: 1.6;
+  min-height: 24px;
+}
+
+.float-text.translating {
+  opacity: 0.7;
+}
+
+.float-text.translating::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 14px;
+  background: var(--accent);
+  margin-left: 2px;
+  vertical-align: middle;
+  animation: blink 0.7s step-end infinite;
+  border-radius: 1px;
+}
+
+.float-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 12px 0;
+}
+
+.float-empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 20px;
+}
+
+.float-empty i {
+  font-size: 28px;
+  opacity: 0.3;
+  margin-bottom: 10px;
+}
+
+.float-empty p {
+  font-size: 13px;
 }
 
 /* 响应式 */

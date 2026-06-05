@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>桌面字幕</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+    }
+
+    .container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 40px;
+      cursor: move;
+      -webkit-app-region: drag;
+    }
+
+    /* 原文 */
+    .src-line {
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.45);
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+      text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6);
+      transition: all 0.3s ease;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      pointer-events: none;
+    }
+
+    /* 翻译 */
+    .tgt-line {
+      font-size: 32px;
+      font-weight: 600;
+      color: #ffffff;
+      letter-spacing: 2px;
+      line-height: 1.3;
+      text-shadow:
+        0 2px 20px rgba(0, 0, 0, 0.5),
+        0 0 40px rgba(14, 165, 233, 0.3);
+      transition: all 0.3s ease;
+      font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      pointer-events: none;
+    }
+
+    /* 发光动画 */
+    .tgt-line.glow {
+      animation: textGlow 2.5s ease-in-out infinite;
+    }
+
+    @keyframes textGlow {
+      0%, 100% {
+        text-shadow:
+          0 2px 20px rgba(0, 0, 0, 0.5),
+          0 0 40px rgba(14, 165, 233, 0.3);
+      }
+      50% {
+        text-shadow:
+          0 2px 20px rgba(0, 0, 0, 0.5),
+          0 0 60px rgba(14, 165, 233, 0.5),
+          0 0 80px rgba(168, 85, 247, 0.2);
+      }
+    }
+
+    /* 淡入动画 */
+    .fade-in {
+      animation: fadeInUp 0.35s ease;
+    }
+
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* 默认状态 */
+    .default-msg {
+      color: rgba(255, 255, 255, 0.3);
+      font-size: 16px;
+      letter-spacing: 3px;
+      pointer-events: none;
+      text-shadow: 0 1px 10px rgba(0, 0, 0, 0.5);
+    }
+
+    /* 状态指示器 */
+    .status-dot {
+      position: absolute;
+      bottom: 5px;
+      right: 10px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.2);
+      pointer-events: none;
+    }
+
+    .status-dot.connected {
+      background: #10b981;
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+    }
+
+    /* 工具栏 */
+    .toolbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 28px;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(10px);
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+      -webkit-app-region: drag;
+      z-index: 100;
+    }
+
+    .container:hover .toolbar {
+      display: flex;
+    }
+
+    .toolbar-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.5);
+      pointer-events: none;
+    }
+
+    .toolbar-right {
+      display: flex;
+      gap: 4px;
+      -webkit-app-region: no-drag;
+    }
+
+    .toolbar-right button {
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 11px;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 3px;
+      transition: all 0.2s;
+    }
+
+    .toolbar-right button:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+    }
+
+    /* 样式面板 */
+    .style-panel {
+      position: fixed;
+      top: 28px;
+      right: 10px;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(15px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 12px;
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 200;
+      -webkit-app-region: no-drag;
+    }
+
+    .style-panel.show { display: flex; }
+
+    .style-panel label {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.4);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .color-options {
+      display: flex;
+      gap: 6px;
+    }
+
+    .color-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: all 0.2s;
+    }
+
+    .color-dot:hover { transform: scale(1.15); }
+    .color-dot.active { border-color: #fff; box-shadow: 0 0 8px rgba(255, 255, 255, 0.3); }
+
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .slider-row input[type="range"] {
+      flex: 1;
+      -webkit-appearance: none;
+      height: 3px;
+      border-radius: 2px;
+      background: rgba(255, 255, 255, 0.2);
+      outline: none;
+    }
+
+    .slider-row input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #0ea5e9;
+      cursor: pointer;
+    }
+
+    .slider-val {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.5);
+      min-width: 28px;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <div class="container" id="container">
+    <!-- 工具栏 -->
+    <div class="toolbar">
+      <div class="toolbar-left">🎤 桌面字幕</div>
+      <div class="toolbar-right">
+        <button onclick="toggleStylePanel()">🎨</button>
+        <button onclick="window.close()">✕</button>
+      </div>
+    </div>
+
+    <!-- 样式面板 -->
+    <div class="style-panel" id="stylePanel">
+      <label>文字颜色</label>
+      <div class="color-options">
+        <div class="color-dot active" style="background:#ffffff" onclick="setColor('#ffffff',this)"></div>
+        <div class="color-dot" style="background:#0ea5e9" onclick="setColor('#0ea5e9',this)"></div>
+        <div class="color-dot" style="background:#a855f7" onclick="setColor('#a855f7',this)"></div>
+        <div class="color-dot" style="background:#f43f5e" onclick="setColor('#f43f5e',this)"></div>
+        <div class="color-dot" style="background:#10b981" onclick="setColor('#10b981',this)"></div>
+        <div class="color-dot" style="background:#f59e0b" onclick="setColor('#f59e0b',this)"></div>
+      </div>
+      <label>字体大小</label>
+      <div class="slider-row">
+        <input type="range" min="20" max="48" value="32" oninput="setSize(this.value)">
+        <span class="slider-val" id="sizeVal">32</span>
+      </div>
+    </div>
+
+    <!-- 字幕内容 -->
+    <div class="default-msg" id="defaultMsg">还未选择翻译页面</div>
+    <div id="lyrics" style="display:none; text-align:center;">
+      <div class="src-line" id="srcLine"></div>
+      <div class="tgt-line glow" id="tgtLine"></div>
+    </div>
+
+    <!-- 状态指示器 -->
+    <div class="status-dot" id="statusDot"></div>
+  </div>
+
+  <script>
+    let currentColor = '#ffffff';
+    let ws = null;
+    let reconnectTimer = null;
+
+    function toggleStylePanel() {
+      document.getElementById('stylePanel').classList.toggle('show');
+    }
+
+    function setColor(color, el) {
+      currentColor = color;
+      const tgtLine = document.getElementById('tgtLine');
+      tgtLine.style.color = color;
+      tgtLine.style.textShadow = '0 2px 20px rgba(0,0,0,0.5), 0 0 40px ' + color + '40';
+      document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
+      el.classList.add('active');
+    }
+
+    function setSize(val) {
+      document.getElementById('tgtLine').style.fontSize = val + 'px';
+      document.getElementById('sizeVal').textContent = val;
+    }
+
+    // 连接网关
+    function connectGateway() {
+      if (ws && ws.readyState === WebSocket.OPEN) return;
+
+      ws = new WebSocket('ws://localhost:3000/ws');
+
+      ws.onopen = () => {
+        console.log('[DesktopSubtitles] Connected to gateway');
+        document.getElementById('statusDot').classList.add('connected');
+        if (reconnectTimer) {
+          clearTimeout(reconnectTimer);
+          reconnectTimer = null;
+        }
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+
+          // 接收翻译结果
+          if (msg.type === 'subtitle_patch') {
+            const { action, new_text } = msg.payload || {};
+
+            if (action === 'ADD_TEMP' || action === 'MARK_FINAL') {
+              updateTranslation(new_text);
+            }
+          }
+        } catch (err) {
+          // 忽略解析错误
+        }
+      };
+
+      ws.onclose = () => {
+        console.log('[DesktopSubtitles] Disconnected from gateway');
+        document.getElementById('statusDot').classList.remove('connected');
+        // 3秒后重连
+        reconnectTimer = setTimeout(connectGateway, 3000);
+      };
+
+      ws.onerror = (err) => {
+        console.error('[DesktopSubtitles] WebSocket error:', err);
+      };
+    }
+
+    // 更新翻译显示
+    function updateTranslation(text) {
+      if (!text) return;
+
+      const defaultMsg = document.getElementById('defaultMsg');
+      const lyrics = document.getElementById('lyrics');
+      const tgtLine = document.getElementById('tgtLine');
+
+      // 隐藏默认消息，显示字幕
+      defaultMsg.style.display = 'none';
+      lyrics.style.display = 'block';
+
+      // 更新文字
+      if (text !== tgtLine.textContent) {
+        tgtLine.textContent = text;
+        tgtLine.classList.add('fade-in');
+        setTimeout(() => tgtLine.classList.remove('fade-in'), 350);
+      }
+    }
+
+    // 监听 postMessage（从浏览器弹窗调用）
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'update') {
+        const { tgt, isRunning } = e.data;
+        if (isRunning && tgt) {
+          updateTranslation(tgt);
+        }
+      }
+    });
+
+    // 启动时连接网关
+    connectGateway();
+  </script>
+</body>
+</html>

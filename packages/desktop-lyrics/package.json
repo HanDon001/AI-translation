@@ -1,0 +1,24 @@
+{
+  "name": "@realtime-interp/desktop-subtitles",
+  "version": "0.1.0",
+  "description": "桌面字幕 - 网易云风格实时翻译显示",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "keywords": [
+    "lyrics",
+    "desktop",
+    "translation"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^42.3.3"
+  },
+  "dependencies": {
+    "ws": "^8.21.0"
+  }
+}

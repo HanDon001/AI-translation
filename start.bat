@@ -7,23 +7,28 @@ echo   LiveTranslate - One Click Start
 echo ========================================
 echo.
 
-echo Killing old processes on port 3000...
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3000 ^| findstr LISTENING') do taskkill /F /PID %%a >nul 2>&1
-
-echo [1/2] Starting Gateway (ws://localhost:3000)...
-start "Gateway" /D "%~dp0" pnpm.cmd --filter @realtime-interp/gateway dev
+echo [1/3] Starting Gateway...
+start "Gateway" pnpm.cmd --filter @realtime-interp/gateway dev
 
 timeout /t 3 /nobreak >nul
 
-echo [2/2] Starting Web (http://localhost:5173)...
-start "Web" /D "%~dp0" pnpm.cmd --filter @realtime-interp/web dev
+echo [2/3] Starting Web...
+start "Web" pnpm.cmd --filter @realtime-interp/web dev
+
+timeout /t 2 /nobreak >nul
+
+echo [3/3] Starting Desktop Subtitles Service...
+cd packages\desktop-lyrics
+start "DesktopSubtitles" python lyrics_server.py
+cd ..\..
 
 echo.
 echo ========================================
+echo   All services started!
 echo   Landing:  http://localhost:5173/landing.html
 echo   Console:  http://localhost:5173/index.html
 echo   Gateway:  ws://localhost:3000/ws
+echo   Desktop:  http://127.0.0.1:8765
 echo ========================================
 echo.
-echo Press any key to close this window...
-pause >nul
+pause

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.livetranslate</groupId>
+        <artifactId>livetranslate-platform</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>components</artifactId>
+    <packaging>pom</packaging>
+    <name>Platform Components</name>
+    <description>平台组件：桌面字幕、Web 控制台等</description>
+</project>

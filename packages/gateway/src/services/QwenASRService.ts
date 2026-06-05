@@ -47,7 +47,8 @@ export function createQwenASRSession(options: ASROptions): {
   const pendingChunks: string[] = [];
 
   ws.on('open', () => {
-    console.log('[LiveTranslate] WebSocket connected');
+    console.log('[LiveTranslate] WebSocket connected to DashScope');
+    console.log('[LiveTranslate] Model:', model, 'Target:', targetLang);
   });
 
   ws.on('message', (data) => {
@@ -138,14 +139,24 @@ export function createQwenASRSession(options: ASROptions): {
 
   ws.on('error', (err) => {
     console.error('[LiveTranslate] WebSocket error:', err.message);
+    // 通知调用方出错
+    onEvent({
+      type: 'FINAL',
+      window_id: windowId++,
+      text: `[翻译错误: ${err.message}]`,
+      start_ms: windowId * 400,
+      end_ms: (windowId + 1) * 400,
+    });
   });
 
   function sendChunk(base64: string) {
     if (!isReady) {
+      console.log('[LiveTranslate] Audio chunk queued (not ready yet)');
       pendingChunks.push(base64);
       return;
     }
     // 发送音频数据
+    console.log('[LiveTranslate] Sending audio chunk, length:', base64.length);
     ws.send(JSON.stringify({
       type: 'input_audio_buffer.append',
       audio: base64,

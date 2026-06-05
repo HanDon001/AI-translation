@@ -2,6 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 覆盖 Tailwind base 样式，确保我们的控制台样式生效 */
+@layer base {
+  body {
+    color: var(--fg, #12283d);
+    background: var(--bg, #f0f4f8);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    color: var(--fg, #12283d);
+  }
+}
+
 @layer components {
   .subtitle-temp {
     @apply text-gray-400 italic opacity-80;

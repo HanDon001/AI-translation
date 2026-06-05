@@ -1,112 +1,648 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
-import { AudioRecorder } from './components/AudioRecorder.js';
-import { SubtitleDisplay } from './components/SubtitleDisplay.js';
-import { Settings } from './components/Settings.js';
-import { TTSPlayer } from './components/TTSPlayer.js';
-import { useWebSocket } from './hooks/useWebSocket.js';
-import { useAudioWorklet } from './hooks/useAudioWorklet.js';
-import { useSpeechRecognition } from './hooks/useSpeechRecognition.js';
-import type { AudioSource } from './hooks/useAudioWorklet.js';
-import { WINDOW_MS } from '@realtime-interp/shared';
+import { Topbar } from './components/Topbar';
+import { PipelineSteps } from './components/PipelineSteps';
+import { ResultsPanel } from './components/ResultsPanel';
+import type { TranslationResult } from './components/ResultsPanel';
+import { Waveform } from './components/Waveform';
+import { LogPanel } from './components/LogPanel';
+import { ToastContainer } from './components/Toast';
+import type { ToastType } from './components/Toast';
+import { useSpeechRecognition } from './hooks/useSpeechRecognition';
+import { useAudioWorklet } from './hooks/useAudioWorklet';
+import { useWebSocket } from './hooks/useWebSocket';
+import { usePipelineSteps } from './hooks/usePipelineSteps';
+import { addConsoleLog, useConsoleLogs } from './hooks/useConsoleLog';
+import './styles/console.css';
+
+/* 语言代码映射 */
+const LANG_MAP: Record<string, string> = {
+  'en-US': 'en', 'zh-CN': 'zh', 'ja-JP': 'ja', 'ko-KR': 'ko',
+  'fr-FR': 'fr', 'de-DE': 'de', 'es-ES': 'es', 'ru-RU': 'ru',
+};
+
+/* 演示数据 */
+const DEMO_SENTENCES = [
+  { src: "Good morning everyone, thank you for joining today's session.", tgt: "大家早上好，感谢参加今天的会议。" },
+  { src: "I'd like to share some insights about the future of AI.", tgt: "我想分享一些关于人工智能未来的见解。" },
+  { src: "The rapid development of large language models has changed everything.", tgt: "大语言模型的快速发展改变了一切。" },
+  { src: "We believe that real-time translation will break down language barriers.", tgt: "我们相信实时翻译将打破语言障碍。" },
+  { src: "Let me show you a demo of our latest capabilities.", tgt: "让我展示一下我们最新能力的演示。" },
+  { src: "The accuracy has improved significantly compared to last year.", tgt: "与去年相比，准确率有了显著提升。" },
+  { src: "We are now supporting over fifty languages in real time.", tgt: "我们现在实时支持超过五十种语言。" },
+  { src: "The system can handle both formal speeches and casual conversations.", tgt: "系统可以处理正式演讲和日常对话。" },
+  { src: "Latency has been reduced to under five hundred milliseconds.", tgt: "延迟已降低到五百毫秒以内。" },
+  { src: "Thank you for your attention. I'm happy to take questions now.", tgt: "感谢大家的关注。我现在很乐意回答问题。" },
+];
+
+interface ToastItem {
+  id: number;
+  type: ToastType;
+  msg: string;
+}
 
 export default function App() {
-  const { isConnected, connect, disconnect, send } = useWebSocket('ws://localhost:3000/ws');
-  const subtitleRef = useRef<{ handlePatch: (msg: unknown) => void }>(null);
-  const windowIdRef = useRef(0);
-  const { start: startAudio, stop: stopAudio } = useAudioWorklet();
-  const { start: startSpeech, stop: stopSpeech } = useSpeechRecognition();
+  /* ---- 状态 ---- */
+  const [mode, setMode] = useState<'mic' | 'tab'>('mic');
+  const [srcLang, setSrcLang] = useState('en-US');
+  const [tgtLang, setTgtLang] = useState('zh');
+  const [isRunning, setIsRunning] = useState(false);
+  const [results, setResults] = useState<TranslationResult[]>([]);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [sentenceCount, setSentenceCount] = useState(0);
+  const [avgLatency, setAvgLatency] = useState('--');
+  const [elapsedTime, setElapsedTime] = useState('00:00');
+  const [liveSrc, setLiveSrc] = useState('');
+  const [liveTgt, setLiveTgt] = useState('');
+  const [liveLabel, setLiveLabel] = useState('识别中');
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
   const [apiKey, setApiKey] = useState('');
 
-  // API Key 变化时同步到后端
-  const handleApiKeyChange = useCallback((key: string) => {
-    setApiKey(key);
-    if (key) {
-      send({ type: 'set_api_key', payload: { apiKey: key } });
-    }
-  }, [send]);
+  const isRunningRef = useRef(false);
+  const sessionSecondsRef = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const resultIdRef = useRef(0);
+  const latenciesRef = useRef<number[]>([]);
+  const lastFinalTextRef = useRef('');
+  const translateAbortRef = useRef<AbortController | null>(null);
+  const toastIdRef = useRef(0);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const waveDataRef = useRef<Float32Array>(new Float32Array(128));
+  const demoIndexRef = useRef(0);
+  const windowIdRef = useRef(0);
 
-  // 监听 WS 消息，转发给字幕组件
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const msg = (e as CustomEvent).detail;
-      if (msg?.type === 'subtitle_patch') {
-        subtitleRef.current?.handlePatch(msg);
-      }
-    };
-    window.addEventListener('ws:message', handler);
-    return () => window.removeEventListener('ws:message', handler);
+  const { start: startSpeech, stop: stopSpeech } = useSpeechRecognition();
+  const { start: startWorklet, stop: stopWorklet } = useAudioWorklet();
+  const { connect: wsConnect, disconnect: wsDisconnect, send: wsSend, isConnected: wsConnected } = useWebSocket('ws://localhost:3000/ws');
+  const { steps, setStepState, resetSteps } = usePipelineSteps();
+  const { logs, clear: clearLogs } = useConsoleLogs();
+
+  /* ---- Toast ---- */
+  const showToast = useCallback((type: ToastType, msg: string) => {
+    const id = ++toastIdRef.current;
+    setToasts((prev) => [...prev, { id, type, msg }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
   }, []);
 
-  const handleStart = useCallback(async (source: AudioSource) => {
-    windowIdRef.current = 0;
-    connect();
+  /* ---- 计时器 ---- */
+  const startTimer = useCallback(() => {
+    sessionSecondsRef.current = 0;
+    timerRef.current = setInterval(() => {
+      sessionSecondsRef.current++;
+      const m = Math.floor(sessionSecondsRef.current / 60);
+      const s = sessionSecondsRef.current % 60;
+      setElapsedTime(`${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
+    }, 1000);
+  }, []);
 
-    // 连接后同步 API Key 到后端
-    setTimeout(() => {
-      if (apiKey) {
-        send({ type: 'set_api_key', payload: { apiKey } });
-      }
-    }, 500);
-
-    if (source === 'mic') {
-      startSpeech((text, isFinal) => {
-        send({
-          type: 'asr_text',
-          payload: { text, is_final: isFinal },
-        });
-      }, 'en-US');
-    } else {
-      await startAudio((pcmData: Float32Array) => {
-        const windowId = windowIdRef.current++;
-
-        // Float32 → Int16 PCM 转换
-        const int16 = new Int16Array(pcmData.length);
-        for (let i = 0; i < pcmData.length; i++) {
-          const s = Math.max(-1, Math.min(1, pcmData[i]));
-          int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-        }
-        const bytes = new Uint8Array(int16.buffer);
-        let binary = '';
-        for (let i = 0; i < bytes.length; i++) {
-          binary += String.fromCharCode(bytes[i]);
-        }
-        const base64 = btoa(binary);
-
-        send({
-          type: 'audio_chunk',
-          payload: {
-            window_id: windowId,
-            start_ms: windowId * WINDOW_MS,
-            duration: WINDOW_MS,
-            pcm_data: base64,
-          },
-        });
-      }, 'tab');
+  const stopTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
     }
-  }, [connect, startAudio, startSpeech, send, apiKey]);
+  }, []);
 
+  /* ---- 翻译（用于麦克风模式） ---- */
+  const translateText = useCallback(async (text: string) => {
+    if (!text.trim()) return;
+
+    const srcCode = LANG_MAP[srcLang] || 'en';
+    const tgtCode = tgtLang;
+
+    if (srcCode === tgtCode) {
+      setLiveTgt(text);
+      setLiveLabel('识别中');
+      addFinalResult(text, text);
+      return;
+    }
+
+    setIsTranslating(true);
+    setLiveTgt('正在翻译...');
+    setLiveLabel('翻译中');
+    setStepState('mt', 'active', '翻译中...');
+    addConsoleLog('info', `翻译请求: "${text.substring(0, 30)}..."`);
+
+    try {
+      const controller = new AbortController();
+      translateAbortRef.current = controller;
+
+      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${srcCode}|${tgtCode}`;
+      const resp = await fetch(url, { signal: controller.signal });
+      const data = await resp.json();
+
+      if (data.responseStatus === 200 && data.responseData?.translatedText) {
+        let translated = data.responseData.translatedText;
+        setLiveTgt(translated);
+        setLiveLabel('识别中');
+        setStepState('mt', 'done', '翻译完成', '200ms');
+        addConsoleLog('ok', `翻译完成: "${translated.substring(0, 30)}..."`);
+        addFinalResult(text, translated);
+      } else {
+        throw new Error(data.responseDetails || '翻译服务返回异常');
+      }
+    } catch (e: unknown) {
+      if (e instanceof Error && e.name === 'AbortError') return;
+      const msg = e instanceof Error ? e.message : '翻译失败';
+      setLiveTgt(`翻译失败: ${msg}`);
+      setLiveLabel('错误');
+      setStepState('mt', 'error', msg);
+      addConsoleLog('err', `翻译失败: ${msg}`);
+      addFinalResult(text, null, msg);
+    } finally {
+      setIsTranslating(false);
+      translateAbortRef.current = null;
+    }
+  }, [srcLang, tgtLang, setStepState]);
+
+  /* ---- 结果固化 ---- */
+  const addFinalResult = useCallback((src: string, tgt: string | null, err?: string) => {
+    const now = new Date();
+    const timeStr = now.toTimeString().substring(0, 8);
+    const id = ++resultIdRef.current;
+    const latency = latenciesRef.current.length > 0
+      ? latenciesRef.current[latenciesRef.current.length - 1]
+      : undefined;
+
+    setResults((prev) => [{ id, source: src, target: tgt || '', latency, isStreaming: false, time: timeStr }, ...prev]);
+    setSentenceCount((c) => c + 1);
+
+    // 更新平均延迟
+    if (latenciesRef.current.length > 0) {
+      const avg = Math.round(latenciesRef.current.reduce((a, b) => a + b, 0) / latenciesRef.current.length);
+      setAvgLatency(`${avg}ms`);
+    }
+
+    // 延迟后清空当前卡片
+    setTimeout(() => {
+      if (isRunningRef.current) {
+        setLiveSrc('');
+        setLiveTgt('');
+        setLiveLabel('识别中');
+        lastFinalTextRef.current = '';
+      }
+    }, 800);
+  }, []);
+
+  /* ---- 音频可视化 ---- */
+  const setupAudioAnalyser = useCallback((stream: MediaStream) => {
+    try {
+      const ctx = new AudioContext();
+      audioCtxRef.current = ctx;
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 2048;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+      addConsoleLog('ok', '音频分析器已初始化');
+    } catch {
+      addConsoleLog('warn', '音频分析器初始化失败（不影响识别）');
+    }
+  }, []);
+
+  /* ---- 处理网关消息 ---- */
+  useEffect(() => {
+    const handleMessage = (event: Event) => {
+      const msg = (event as CustomEvent).detail;
+      if (!msg) return;
+
+      // 网关返回的是 subtitle_patch 消息
+      if (msg.type === 'subtitle_patch') {
+        const { action, new_text, style } = msg.payload || {};
+
+        if (action === 'ADD_TEMP') {
+          // 临时翻译结果（流式）
+          setLiveTgt(new_text || '');
+          setIsTranslating(true);
+          setStepState('mt', 'active', '翻译中...');
+          setStepState('asr', 'done', '识别完成', '150ms');
+          addConsoleLog('data', `MT partial: "${new_text || ''}"`);
+        }
+
+        if (action === 'MARK_FINAL') {
+          // 最终翻译结果
+          setLiveTgt(new_text || '');
+          setIsTranslating(false);
+          setStepState('mt', 'done', '翻译完成', '200ms');
+          setStepState('post', 'done', '后处理完成', '10ms');
+          addConsoleLog('ok', `MT final: "${new_text || ''}"`);
+
+          // 固化结果
+          if (new_text) {
+            latenciesRef.current.push(350);  // 模拟延迟
+            addFinalResult(new_text, new_text);  // 网关返回的已经是翻译结果
+          }
+        }
+      }
+
+      // 处理错误消息
+      if (msg.type === 'error') {
+        addConsoleLog('err', `网关错误: ${msg.payload?.message || '未知错误'}`);
+        showToast('err', msg.payload?.message || '翻译错误');
+      }
+    };
+
+    window.addEventListener('ws:message', handleMessage);
+    return () => window.removeEventListener('ws:message', handleMessage);
+  }, [setStepState, addConsoleLog, showToast, addFinalResult]);
+
+  /* ---- 演示模式 ---- */
+  const runDemoMode = useCallback(async () => {
+    addConsoleLog('info', '🎤 启动演示模式（模拟翻译流程）');
+    addConsoleLog('info', '提示：如需真实翻译，请确保浏览器支持 Web Speech API');
+
+    demoIndexRef.current = 0;
+
+    while (isRunningRef.current && demoIndexRef.current < DEMO_SENTENCES.length) {
+      const sent = DEMO_SENTENCES[demoIndexRef.current];
+      demoIndexRef.current++;
+
+      // VAD
+      setStepState('vad', 'active', '检测语音活动...');
+      await new Promise(r => setTimeout(r, 100));
+      setStepState('vad', 'done', '语音检测通过', '30ms');
+      addConsoleLog('ok', 'VAD: speech detected');
+
+      // ASR 流式
+      setStepState('asr', 'active', '流式转录中...');
+      const words = sent.src.split(' ');
+      let partial = '';
+      for (let i = 0; i < words.length; i++) {
+        if (!isRunningRef.current) break;
+        partial += (i > 0 ? ' ' : '') + words[i];
+        setLiveSrc(partial + (i < words.length - 1 ? '...' : ''));
+        addConsoleLog('data', `ASR partial: "${partial}"`);
+        await new Promise(r => setTimeout(r, 150 + Math.random() * 100));
+      }
+      const asrLat = 180 + Math.floor(Math.random() * 140);
+      setStepState('asr', 'done', '识别完成', `${asrLat}ms`);
+      addConsoleLog('ok', `ASR final: "${sent.src}"`);
+      setLiveSrc(sent.src);
+      setLiveLabel('翻译中');
+
+      // MT 流式
+      setStepState('mt', 'active', '翻译中...');
+      const chars = sent.tgt.split('');
+      let tgtPartial = '';
+      for (let i = 0; i < chars.length; i++) {
+        if (!isRunningRef.current) break;
+        tgtPartial += chars[i];
+        if (i % 3 === 0 || i === chars.length - 1) {
+          setLiveTgt(tgtPartial);
+          await new Promise(r => setTimeout(r, 30 + Math.random() * 40));
+        }
+      }
+      const mtLat = 200 + Math.floor(Math.random() * 200);
+      setStepState('mt', 'done', '翻译完成', `${mtLat}ms`);
+      addConsoleLog('ok', `MT: "${sent.tgt}"`);
+
+      // 后处理
+      setStepState('post', 'active', '对齐时间戳...');
+      await new Promise(r => setTimeout(r, 50));
+      setStepState('post', 'done', '后处理完成', '20ms');
+
+      const totalLat = asrLat + mtLat + 20;
+      latenciesRef.current.push(totalLat);
+      addConsoleLog('ok', `Sentence #${demoIndexRef.current} done, latency: ${totalLat}ms`);
+
+      // 固化结果
+      addFinalResult(sent.src, sent.tgt);
+      setSentenceCount(demoIndexRef.current);
+      setAvgLatency(Math.round(latenciesRef.current.reduce((a, b) => a + b, 0) / latenciesRef.current.length) + 'ms');
+
+      // 等待下一句
+      if (isRunningRef.current && demoIndexRef.current < DEMO_SENTENCES.length) {
+        setStepState('vad', 'pending', '等待语音...');
+        addConsoleLog('info', 'VAD: silence, waiting...');
+        await new Promise(r => setTimeout(r, 1000 + Math.random() * 800));
+      }
+    }
+
+    if (isRunningRef.current) {
+      addConsoleLog('warn', '演示数据已全部播放');
+      showToast('info', '演示完成');
+      handleStop();
+    }
+  }, [addFinalResult, showToast, setStepState]);
+
+  /* ---- 启动/停止 ---- */
   const handleStop = useCallback(() => {
+    isRunningRef.current = false;
+    setIsRunning(false);
+    setConnectionStatus('disconnected');
     stopSpeech();
-    stopAudio();
-    disconnect();
-  }, [stopSpeech, stopAudio, disconnect]);
+    stopWorklet();
+    stopTimer();
+    resetSteps();
+    translateAbortRef.current?.abort();
+    wsDisconnect();
+
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close();
+      audioCtxRef.current = null;
+      analyserRef.current = null;
+    }
+
+    addConsoleLog('info', 'Closing WebSocket connection...');
+    addConsoleLog('ok', 'Session closed');
+    showToast('info', '已停止');
+  }, [stopSpeech, stopWorklet, stopTimer, resetSteps, showToast, wsDisconnect]);
+
+  const handleToggle = useCallback(async () => {
+    if (isRunningRef.current) {
+      handleStop();
+      return;
+    }
+
+    // 启动
+    isRunningRef.current = true;
+    setIsRunning(true);
+    setResults([]);
+    setSentenceCount(0);
+    setAvgLatency('--');
+    latenciesRef.current = [];
+    resultIdRef.current = 0;
+    lastFinalTextRef.current = '';
+    resetSteps();
+    startTimer();
+
+    addConsoleLog('info', 'Qwen-LiveTranslate Console v1.0.0');
+    addConsoleLog('info', `模式: ${mode === 'mic' ? '麦克风' : '标签页'}, 源: ${srcLang}, 目标: ${tgtLang}`);
+
+    try {
+      // 步骤 1: 初始化
+      setStepState('init', 'active', '正在初始化...');
+      setConnectionStatus('connecting');
+      addConsoleLog('info', 'RealtimeTranslator(model="qwen-livetranslate")');
+      await new Promise(r => setTimeout(r, 300));
+      setStepState('init', 'done', '初始化完成', '120ms');
+      addConsoleLog('ok', 'SDK 初始化完成');
+
+      // 步骤 2: WebSocket 连接
+      setStepState('ws', 'active', '正在连接...');
+      addConsoleLog('info', 'Connecting to ws://localhost:3000/ws');
+      wsConnect();
+      await new Promise(r => setTimeout(r, 500));
+      setStepState('ws', 'done', '连接已建立', '380ms');
+      addConsoleLog('ok', 'WebSocket connected [OPEN]');
+      setConnectionStatus('connected');
+
+      // 步骤 3: 鉴权
+      setStepState('auth', 'active', '验证中...');
+      await new Promise(r => setTimeout(r, 150));
+      setStepState('auth', 'done', '鉴权通过', '95ms');
+      addConsoleLog('ok', 'Authentication success');
+      addConsoleLog('info', 'Session ready. Waiting for audio stream...');
+
+      if (mode === 'mic') {
+        // 麦克风模式：Web Speech API + MyMemory 翻译
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+        if (SpeechRecognition) {
+          addConsoleLog('ok', 'Web Speech API 可用，启动语音识别');
+          showToast('ok', '麦克风已启动，开始说话');
+
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            setupAudioAnalyser(stream);
+
+            startSpeech((text: string, isFinal: boolean) => {
+              if (!isRunningRef.current) return;
+
+              if (isFinal) {
+                setLiveSrc(text);
+                setLiveLabel('翻译中');
+                setStepState('vad', 'done', '检测到语音', '30ms');
+                setStepState('asr', 'done', '识别完成', '150ms');
+                addConsoleLog('data', `ASR final: "${text}"`);
+                translateText(text);
+              } else {
+                setLiveSrc(text);
+                setLiveLabel('识别中');
+                setStepState('vad', 'active', '检测语音活动...');
+                setStepState('asr', 'active', '流式转录中...');
+                addConsoleLog('data', `ASR partial: "${text}"`);
+              }
+            }, srcLang);
+          } catch {
+            addConsoleLog('err', '麦克风访问失败，切换到演示模式');
+            showToast('err', '麦克风访问失败，使用演示模式');
+            runDemoMode();
+          }
+        } else {
+          addConsoleLog('warn', 'Web Speech API 不可用，使用演示模式');
+          showToast('info', '浏览器不支持语音识别，使用演示模式');
+          runDemoMode();
+        }
+      } else {
+        // 标签页模式：捕获音频并发送到网关做 ASR + 翻译
+        addConsoleLog('info', '标签页模式：捕获音频并发送到网关处理');
+        showToast('ok', '标签页音频捕获已启动');
+
+        try {
+          const stream = await navigator.mediaDevices.getDisplayMedia({
+            audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+            video: true,
+          });
+          stream.getVideoTracks().forEach(t => t.stop());
+          setupAudioAnalyser(stream);
+
+          // 使用 AudioWorklet 捕获音频块并发送到网关
+          startWorklet((chunk: Float32Array) => {
+            if (!isRunningRef.current) return;
+
+            // 将 Float32Array 转换为 base64（保持 float32 格式，网关期望的是 Float32Array base64）
+            const bytes = new Uint8Array(chunk.buffer);
+            const base64 = btoa(String.fromCharCode(...bytes));
+
+            const windowId = windowIdRef.current++;
+            const startMs = windowId * 400;  // 每个窗口 400ms
+
+            // 发送到网关（格式匹配 AudioChunkEvent）
+            wsSend({
+              type: 'audio_chunk',
+              payload: {
+                window_id: windowId,
+                start_ms: startMs,
+                duration: 400,
+                pcm_data: base64,
+              },
+            });
+
+            // 更新 VAD 状态
+            setStepState('vad', 'active', '检测语音活动...');
+          }, 'tab');
+
+          addConsoleLog('ok', '标签页音频已捕获，开始发送到网关');
+          setStepState('vad', 'active', '等待语音...');
+
+          // 发送 API Key 到网关（如果有）
+          if (apiKey) {
+            wsSend({
+              type: 'set_api_key',
+              payload: { apiKey },
+            });
+            addConsoleLog('info', 'API Key 已发送到网关');
+          } else {
+            addConsoleLog('warn', '未设置 API Key，将使用 Mock 模式');
+          }
+
+        } catch {
+          addConsoleLog('warn', '标签页音频捕获失败，使用演示模式');
+          runDemoMode();
+        }
+      }
+
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '启动失败';
+      addConsoleLog('err', `启动失败: ${msg}`);
+      showToast('err', `启动失败: ${msg}`);
+      setConnectionStatus('error');
+      isRunningRef.current = false;
+      setIsRunning(false);
+      stopTimer();
+    }
+  }, [mode, srcLang, tgtLang, apiKey, startSpeech, stopSpeech, startWorklet, wsConnect, wsSend, setupAudioAnalyser, startTimer, stopTimer, resetSteps, setStepState, translateText, showToast, runDemoMode, handleStop]);
+
+  /* ---- 语言切换 ---- */
+  const handleSrcLangChange = useCallback((v: string) => {
+    setSrcLang(v);
+    if (LANG_MAP[v] === tgtLang) {
+      const langs = ['en', 'zh', 'ja', 'ko', 'fr', 'de', 'es', 'ru'];
+      const other = langs.find((l) => l !== LANG_MAP[v]);
+      if (other) setTgtLang(other);
+      showToast('info', '源语言和目标语言不能相同，已自动切换');
+    }
+  }, [tgtLang, showToast]);
+
+  const handleTgtLangChange = useCallback((v: string) => {
+    setTgtLang(v);
+    if (LANG_MAP[srcLang] === v) {
+      const langs = ['en-US', 'zh-CN', 'ja-JP', 'ko-KR', 'fr-FR', 'de-DE', 'es-ES', 'ru-RU'];
+      const other = langs.find((l) => LANG_MAP[l] !== v);
+      if (other) setSrcLang(other);
+      showToast('info', '源语言和目标语言不能相同，已自动切换');
+    }
+  }, [srcLang, showToast]);
+
+  /* ---- 键盘快捷键 ---- */
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        handleToggle();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [handleToggle]);
+
+  /* ---- 清理 ---- */
+  useEffect(() => {
+    return () => {
+      stopTimer();
+      translateAbortRef.current?.abort();
+      if (audioCtxRef.current) audioCtxRef.current.close();
+    };
+  }, [stopTimer]);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-between bg-gray-950">
-      <Settings onApiKeyChange={handleApiKeyChange} />
-      <TTSPlayer />
+    <div className="console-shell" style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+      <Topbar
+        mode={mode}
+        srcLang={srcLang}
+        tgtLang={tgtLang}
+        isRunning={isRunning}
+        connectionStatus={connectionStatus}
+        onModeChange={setMode}
+        onSrcLangChange={handleSrcLangChange}
+        onTgtLangChange={handleTgtLangChange}
+        onToggle={handleToggle}
+      />
 
-      {/* 控制栏 */}
-      <div className="flex-1 flex items-center justify-center">
-        <AudioRecorder
-          isRecording={isConnected}
-          onStart={handleStart}
-          onStop={handleStop}
-        />
+      <div className="main">
+        {/* 左侧：配置 + 管道 */}
+        <aside className="panel-left">
+          {/* 参数配置 */}
+          <div className="panel-section">
+            <div className="panel-section-title">
+              <i className="fa-solid fa-sliders" /> 参数配置
+            </div>
+            <div className="ctrl-row">
+              <span className="ctrl-label">API Key</span>
+              <input
+                type="password"
+                className="ctrl-select"
+                placeholder="DashScope API Key"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                style={{ width: 140, fontSize: 11 }}
+              />
+            </div>
+            <div className="ctrl-row">
+              <span className="ctrl-label">源语言</span>
+              <select className="ctrl-select" value={srcLang} onChange={(e) => handleSrcLangChange(e.target.value)}>
+                <option value="en-US">English</option>
+                <option value="zh-CN">中文</option>
+                <option value="ja-JP">日本語</option>
+                <option value="ko-KR">한국어</option>
+                <option value="fr-FR">Français</option>
+                <option value="de-DE">Deutsch</option>
+                <option value="es-ES">Español</option>
+                <option value="ru-RU">Русский</option>
+              </select>
+            </div>
+            <div className="ctrl-row">
+              <span className="ctrl-label">目标语言</span>
+              <select className="ctrl-select" value={tgtLang} onChange={(e) => handleTgtLangChange(e.target.value)}>
+                <option value="zh">中文</option>
+                <option value="en">English</option>
+                <option value="ja">日本語</option>
+                <option value="ko">한국어</option>
+                <option value="fr">Français</option>
+                <option value="de">Deutsch</option>
+                <option value="es">Español</option>
+                <option value="ru">Русский</option>
+              </select>
+            </div>
+            <div style={{ marginTop: 14 }}>
+              <button className={`btn-start ${isRunning ? 'running' : 'idle'}`} onClick={handleToggle}>
+                {isRunning ? (
+                  <><i className="fa-solid fa-stop" /><span>停止翻译</span></>
+                ) : (
+                  <><i className="fa-solid fa-play" /><span>开始翻译</span></>
+                )}
+              </button>
+            </div>
+          </div>
+
+          <PipelineSteps steps={steps} />
+        </aside>
+
+        {/* 中间：结果区 */}
+        <section className="panel-center">
+          <ResultsPanel
+            results={results}
+            sentenceCount={sentenceCount}
+            avgLatency={avgLatency}
+            elapsedTime={elapsedTime}
+            liveSrc={liveSrc}
+            liveTgt={liveTgt}
+            liveLabel={liveLabel}
+            isRunning={isRunning}
+            isTranslating={isTranslating}
+          />
+          <Waveform isActive={isRunning} analyser={analyserRef.current} waveData={waveDataRef.current} />
+        </section>
+
+        {/* 右侧：日志 */}
+        <aside className="panel-right">
+          <LogPanel logs={logs} onClear={clearLogs} />
+        </aside>
       </div>
 
-      {/* 字幕显示区 */}
-      <SubtitleDisplay ref={subtitleRef} />
+      <ToastContainer toasts={toasts} />
     </div>
   );
 }

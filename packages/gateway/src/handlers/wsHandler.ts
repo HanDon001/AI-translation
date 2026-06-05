@@ -3,8 +3,29 @@ import type { WebSocket } from 'ws';
 import { isAudioChunk } from '@realtime-interp/shared';
 import { createQwenASRSession, type InternalASREvent } from '../services/QwenASRService.js';
 
-// Mock 翻译剧本（降级用）
-const MOCK_SCRIPT = ['Hello', 'everyone', 'welcome to', 'the meeting'];
+// Mock 翻译剧本（无 API Key 降级用）— 模拟完整会议发言
+const MOCK_SCRIPT = [
+  'Good morning',
+  'everyone,',
+  'thank you for',
+  'joining us today.',
+  'We are excited',
+  'to share our',
+  'latest advancements',
+  'in real-time translation.',
+  'This technology',
+  'uses large language',
+  'models to deliver',
+  'accurate results.',
+  'Our system supports',
+  'over fifty languages',
+  'with latency under',
+  'five hundred milliseconds.',
+  'We believe this',
+  'will transform how',
+  'people communicate',
+  'across language barriers.',
+];
 
 /**
  * 每个连接的独立状态
@@ -32,10 +53,10 @@ export function registerWsHandler(app: FastifyInstance): void {
     const startMs = id * 400;
     const endMs = (id + 1) * 400;
 
-    app.log.info({ type, text, id }, '🌐 Translate event');
+    app.log.info({ type, text, id, clientCount: clients.size }, '🌐 Translate event');
 
     if (type === 'CHUNK') {
-      broadcast(clients, {
+      const msg = {
         type: 'subtitle_patch',
         payload: {
           action: 'ADD_TEMP',
@@ -44,11 +65,13 @@ export function registerWsHandler(app: FastifyInstance): void {
           style: 'temp',
         },
         timestamp: Date.now(),
-      });
+      };
+      app.log.info({ action: 'ADD_TEMP', text, clients: clients.size }, '📤 Broadcasting to clients');
+      broadcast(clients, msg);
     }
 
     if (type === 'FINAL') {
-      broadcast(clients, {
+      const msg = {
         type: 'subtitle_patch',
         payload: {
           action: 'MARK_FINAL',
@@ -57,7 +80,9 @@ export function registerWsHandler(app: FastifyInstance): void {
           style: 'final',
         },
         timestamp: Date.now(),
-      });
+      };
+      app.log.info({ action: 'MARK_FINAL', text, clients: clients.size }, '📤 Broadcasting to clients');
+      broadcast(clients, msg);
     }
   }
 
@@ -70,6 +95,9 @@ export function registerWsHandler(app: FastifyInstance): void {
     socket.on('message', async (raw) => {
       try {
         const msg = JSON.parse(raw.toString());
+
+        // 添加日志：收到消息
+        app.log.info({ type: msg.type }, '📨 Received message');
 
         // 处理 API Key 设置
         if (msg.type === 'set_api_key') {
@@ -93,6 +121,8 @@ export function registerWsHandler(app: FastifyInstance): void {
         if (isAudioChunk(msg)) {
           const { window_id, pcm_data } = msg.payload;
 
+          app.log.info({ window_id, hasApiKey: !!connState.apiKey, hasSession: !!connState.asrSession, hasPcmData: !!pcm_data }, '🎵 Audio chunk received');
+
           if (window_id % 10 === 0) {
             app.log.info({ window_id, hasApiKey: !!connState.apiKey, hasSession: !!connState.asrSession }, '🎵 Audio chunk');
           }
@@ -102,11 +132,13 @@ export function registerWsHandler(app: FastifyInstance): void {
             if (window_id % 10 === 0) {
               app.log.info({ window_id }, '⚠️ No API Key, using Mock');
             }
-            const mockText = MOCK_SCRIPT[window_id % MOCK_SCRIPT.length];
+            const idx = window_id % MOCK_SCRIPT.length;
+            // 每4个chunk标一个FINAL（模拟句子边界），最后一个也标FINAL
+            const isFinal = (idx > 0 && idx % 4 === 0) || idx === MOCK_SCRIPT.length - 1;
             handleTranslateEvent({
-              type: window_id % MOCK_SCRIPT.length === MOCK_SCRIPT.length - 1 ? 'FINAL' : 'CHUNK',
+              type: isFinal ? 'FINAL' : 'CHUNK',
               window_id,
-              text: mockText,
+              text: MOCK_SCRIPT[idx],
               start_ms: window_id * 400,
               end_ms: (window_id + 1) * 400,
             });
@@ -125,11 +157,11 @@ export function registerWsHandler(app: FastifyInstance): void {
               app.log.info('✅ LiveTranslate session created');
             } catch (err) {
               app.log.error(err, '❌ LiveTranslate session failed, using mock');
-              const mockText = MOCK_SCRIPT[window_id % MOCK_SCRIPT.length];
+              const idx = window_id % MOCK_SCRIPT.length;
               handleTranslateEvent({
-                type: 'CHUNK',
+                type: idx % 4 === 0 ? 'CHUNK' : 'CHUNK',
                 window_id,
-                text: mockText,
+                text: MOCK_SCRIPT[idx],
                 start_ms: window_id * 400,
                 end_ms: (window_id + 1) * 400,
               });
@@ -139,7 +171,10 @@ export function registerWsHandler(app: FastifyInstance): void {
 
           // 发送音频到 LiveTranslate
           if (pcm_data) {
+            app.log.info({ window_id, dataLength: pcm_data.length }, '📤 Sending audio to LiveTranslate');
             connState.asrSession.sendAudio(pcm_data);
+          } else {
+            app.log.warn({ window_id }, '⚠️ No pcm_data in audio chunk');
           }
         }
       } catch (err) {

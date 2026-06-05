@@ -23,8 +23,9 @@ export function registerWsHandler(app: FastifyInstance): void {
         const msg = JSON.parse(raw.toString());
 
         if (isAudioChunk(msg)) {
-          const { window_id, start_ms } = msg.payload;
-          app.log.info({ window_id }, `Audio chunk received`);
+          const { window_id, start_ms, pcm_data } = msg.payload;
+          const pcmBytes = pcm_data ? Buffer.from(pcm_data, 'base64').length : 0;
+          app.log.info({ window_id, pcm_bytes: pcmBytes, start_ms }, `Audio chunk received`);
 
           // 模拟 ASR 处理（V1 Mock）
           // 实际应由 asrClient 转发到 asr-engine

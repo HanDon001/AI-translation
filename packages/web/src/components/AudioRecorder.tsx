@@ -17,9 +17,9 @@ export function AudioRecorder({ isRecording, onStart, onStop }: AudioRecorderPro
     }
 
     try {
-      // 请求麦克风权限
+      // 请求麦克风权限验证
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((track) => track.stop()); // V1先释放, Phase 1再真正使用
+      stream.getTracks().forEach((track) => track.stop()); // 仅验证权限，实际流由 useAudioWorklet 管理
       onStart();
     } catch (err) {
       setError('麦克风授权失败，请允许浏览器访问麦克风');

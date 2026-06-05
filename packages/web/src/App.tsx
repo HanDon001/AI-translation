@@ -2,6 +2,7 @@ import { useRef, useCallback, useEffect, useState } from 'react';
 import { AudioRecorder } from './components/AudioRecorder.js';
 import { SubtitleDisplay } from './components/SubtitleDisplay.js';
 import { Settings } from './components/Settings.js';
+import { TTSPlayer } from './components/TTSPlayer.js';
 import { useWebSocket } from './hooks/useWebSocket.js';
 import { useAudioWorklet } from './hooks/useAudioWorklet.js';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition.js';
@@ -24,40 +25,17 @@ export default function App() {
     }
   }, [send]);
 
-  // 调用 TTS 播放译文
-  const playTTS = useCallback(async (text: string) => {
-    if (!apiKey) return;
-    try {
-      const res = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, apiKey }),
-      });
-      if (!res.ok) return;
-      const { audio } = await res.json();
-      if (audio) {
-        const audioEl = new Audio(`data:audio/mp3;base64,${audio}`);
-        audioEl.play().catch(() => {});
-      }
-    } catch (err) {
-      console.error('[TTS] Failed:', err);
-    }
-  }, [apiKey]);
-
-  // 监听 WS 消息，转发给字幕组件，最终态自动播放 TTS
+  // 监听 WS 消息，转发给字幕组件
   useEffect(() => {
     const handler = (e: Event) => {
       const msg = (e as CustomEvent).detail;
       if (msg?.type === 'subtitle_patch') {
         subtitleRef.current?.handlePatch(msg);
-        if (msg.payload?.action === 'MARK_FINAL' && msg.payload?.new_text) {
-          playTTS(msg.payload.new_text);
-        }
       }
     };
     window.addEventListener('ws:message', handler);
     return () => window.removeEventListener('ws:message', handler);
-  }, [playTTS]);
+  }, []);
 
   const handleStart = useCallback(async (source: AudioSource) => {
     windowIdRef.current = 0;
@@ -105,7 +83,7 @@ export default function App() {
         });
       }, 'tab');
     }
-  }, [connect, startAudio, startSpeech, send]);
+  }, [connect, startAudio, startSpeech, send, apiKey]);
 
   const handleStop = useCallback(() => {
     stopSpeech();
@@ -116,6 +94,7 @@ export default function App() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-between bg-gray-950">
       <Settings onApiKeyChange={handleApiKeyChange} />
+      <TTSPlayer />
 
       {/* 控制栏 */}
       <div className="flex-1 flex items-center justify-center">

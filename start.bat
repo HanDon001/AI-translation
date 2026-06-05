@@ -5,6 +5,10 @@ echo ========================================
 echo   realtime-interp - one click start
 echo ========================================
 echo.
+
+echo Killing old processes on port 3000...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3000 ^| findstr LISTENING') do taskkill /F /PID %%a >nul 2>&1
+
 echo [1/2] Starting Gateway (ws://localhost:3000)...
 start "Gateway" /D "%~dp0" pnpm.cmd --filter @realtime-interp/gateway dev
 

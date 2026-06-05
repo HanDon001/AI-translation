@@ -11,6 +11,14 @@ import { createQwenTTSSession } from '../services/QwenTTSService.js';
 const MOCK_SCRIPT = ['Hello', 'everyone', 'welcome to', 'the meeting'];
 
 /**
+ * 每个连接的独立状态
+ */
+interface ConnectionState {
+  apiKey: string;
+  asrSession: ReturnType<typeof createQwenASRSession> | null;
+}
+
+/**
  * WebSocket 消息路由处理
  * 接收前端音频切片或语音识别文本，通过 ASR + Wait-K 调度翻译，广播字幕 Patch
  */
@@ -18,12 +26,11 @@ export function registerWsHandler(app: FastifyInstance): void {
   const buffer = new RingBuffer();
   const scheduler = new WaitKScheduler(buffer);
   const clients = new Set<WebSocket>();
+  const connectionStates = new Map<WebSocket, ConnectionState>();
   let windowId = 0;
-  let apiKey = '';
-  let asrSession: ReturnType<typeof createQwenASRSession> | null = null;
 
   /** 处理 ASR 事件（CHUNK/CORRECT/FINAL） */
-  async function handleASREvent(event: InternalASREvent): Promise<void> {
+  async function handleASREvent(event: InternalASREvent, connState: ConnectionState): Promise<void> {
     const { type, text, start_ms, end_ms } = event;
     if (!text) {
       app.log.debug({ type }, 'ASR event: empty text, skip');
@@ -41,11 +48,7 @@ export function registerWsHandler(app: FastifyInstance): void {
         if (patch) {
           app.log.info({ patch }, '📤 Broadcasting INVALIDATE patch');
           broadcast(clients, { type: 'subtitle_patch', payload: patch, timestamp: Date.now() });
-        } else {
-          app.log.debug('No diff from correction');
         }
-      } else {
-        app.log.warn({ start_ms }, 'Correction target not found in buffer');
       }
       return;
     }
@@ -70,11 +73,11 @@ export function registerWsHandler(app: FastifyInstance): void {
       broadcast(clients, { type: 'subtitle_patch', payload: patch, timestamp: Date.now() });
 
       // 最终态触发 TTS
-      if (type === 'FINAL' && apiKey && patch.new_text) {
+      if (type === 'FINAL' && connState.apiKey && patch.new_text) {
         app.log.info({ text: patch.new_text }, '🔊 Triggering TTS');
         createQwenTTSSession({
           text: patch.new_text,
-          apiKey,
+          apiKey: connState.apiKey,
           onAudioChunk: (chunk) => {
             broadcast(clients, {
               type: 'tts_audio',
@@ -84,24 +87,19 @@ export function registerWsHandler(app: FastifyInstance): void {
           },
           onDone: () => {
             app.log.info('🔊 TTS done');
-            broadcast(clients, {
-              type: 'tts_audio',
-              payload: { audio_chunk: '', is_last: true },
-              timestamp: Date.now(),
-            });
           },
           onError: (err) => {
             app.log.error(err, '🔊 TTS failed');
           },
         });
       }
-    } else {
-      app.log.debug({ text }, 'No patch from scheduler (waiting for more windows)');
     }
   }
 
   app.get('/ws', { websocket: true }, (socket) => {
     clients.add(socket);
+    const connState: ConnectionState = { apiKey: '', asrSession: null };
+    connectionStates.set(socket, connState);
     app.log.info(`Client connected. Total: ${clients.size}`);
 
     socket.on('message', async (raw) => {
@@ -110,9 +108,9 @@ export function registerWsHandler(app: FastifyInstance): void {
 
         // 处理 API Key 设置
         if (msg.type === 'set_api_key') {
-          apiKey = msg.payload.apiKey;
-          scheduler.setApiKey(apiKey);
-          app.log.info({ key_prefix: apiKey.slice(0, 8) + '...' }, '🔑 API Key updated');
+          connState.apiKey = msg.payload.apiKey;
+          scheduler.setApiKey(connState.apiKey);
+          app.log.info({ key_prefix: connState.apiKey.slice(0, 8) + '...' }, '🔑 API Key updated');
           return;
         }
 
@@ -124,21 +122,20 @@ export function registerWsHandler(app: FastifyInstance): void {
             text: msg.payload.text,
             start_ms: (windowId - 1) * WINDOW_MS,
             end_ms: windowId * WINDOW_MS,
-          });
+          }, connState);
         }
 
         // 处理音频切片（标签页模式 - 送入 Qwen ASR）
         if (isAudioChunk(msg)) {
           const { window_id, pcm_data } = msg.payload;
-          const bytes = pcm_data ? Buffer.from(pcm_data, 'base64').length : 0;
 
-          // 每 10 个 chunk 打印一次，减少日志量
+          // 每 10 个 chunk 打印一次
           if (window_id % 10 === 0) {
-            app.log.info({ window_id, pcm_bytes: bytes, hasApiKey: !!apiKey, hasSession: !!asrSession }, '🎵 Audio chunk');
+            app.log.info({ window_id, hasApiKey: !!connState.apiKey, hasSession: !!connState.asrSession }, '🎵 Audio chunk');
           }
 
           // 无 API Key 时用 Mock ASR 降级
-          if (!apiKey) {
+          if (!connState.apiKey) {
             if (window_id % 10 === 0) {
               app.log.info({ window_id }, '⚠️ No API Key, using Mock ASR');
             }
@@ -149,25 +146,25 @@ export function registerWsHandler(app: FastifyInstance): void {
               text: mockText,
               start_ms: window_id * WINDOW_MS,
               end_ms: (window_id + 1) * WINDOW_MS,
-            });
+            }, connState);
             return;
           }
 
           // 首次收到音频时创建 ASR 会话
-          if (!asrSession) {
+          if (!connState.asrSession) {
             app.log.info('🔗 Creating ASR session...');
             try {
-              asrSession = createQwenASRSession({
-                apiKey,
+              connState.asrSession = createQwenASRSession({
+                apiKey: connState.apiKey,
                 onEvent: (event) => {
-                  handleASREvent(event).catch((err) => {
+                  handleASREvent(event, connState).catch((err) => {
                     app.log.error(err, 'Failed to handle ASR event');
                   });
                 },
               });
               app.log.info('✅ ASR session created');
             } catch (err) {
-              app.log.error(err, '❌ Failed to create ASR session, falling back to mock');
+              app.log.error(err, '❌ ASR session failed, using mock');
               const mockText = MOCK_SCRIPT[window_id % MOCK_SCRIPT.length];
               await handleASREvent({
                 type: 'CHUNK',
@@ -175,14 +172,14 @@ export function registerWsHandler(app: FastifyInstance): void {
                 text: mockText,
                 start_ms: window_id * WINDOW_MS,
                 end_ms: (window_id + 1) * WINDOW_MS,
-              });
+              }, connState);
               return;
             }
           }
 
           // 发送音频到 ASR
           if (pcm_data) {
-            asrSession.sendAudio(pcm_data);
+            connState.asrSession.sendAudio(pcm_data);
           }
         }
       } catch (err) {
@@ -192,10 +189,11 @@ export function registerWsHandler(app: FastifyInstance): void {
 
     socket.on('close', () => {
       clients.delete(socket);
-      if (asrSession) {
-        asrSession.close();
-        asrSession = null;
+      if (connState.asrSession) {
+        connState.asrSession.close();
+        connState.asrSession = null;
       }
+      connectionStates.delete(socket);
       app.log.info(`Client disconnected. Total: ${clients.size}`);
     });
   });

@@ -1,0 +1,56 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_REGISTRY = 'registry.cn-hangzhou.aliyuncs.com/livetranslate'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh 'mvn clean package -DskipTests'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh 'mvn test'
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                script {
+                    def services = ['gateway-service', 'asr-server', 'translate-server', 'auth-service']
+                    services.each { service ->
+                        sh "docker build -t ${DOCKER_REGISTRY}/${service}:${BUILD_TAG} ./docker/services/${service}"
+                    }
+                }
+            }
+        }
+
+        stage('Docker Push') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'docker-registry', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                    sh "docker login -u ${USER} -p ${PASS} ${DOCKER_REGISTRY}"
+                    sh "docker push ${DOCKER_REGISTRY}/*:${BUILD_TAG}"
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Build successful!'
+        }
+        failure {
+            echo 'Build failed!'
+        }
+    }
+}

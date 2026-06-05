@@ -3,7 +3,7 @@ import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import { loadEnv } from './config/env.js';
 import { registerErrorHandler, registerRequestLogger } from './middleware/index.js';
-import { registerHealthRoute } from './routes/index.js';
+import { registerHealthRoute, registerTtsRoute } from './routes/index.js';
 import { registerWsHandler } from './handlers/index.js';
 
 const env = loadEnv();
@@ -21,6 +21,7 @@ async function bootstrap(): Promise<void> {
 
   // Register routes
   registerHealthRoute(app);
+  registerTtsRoute(app);
   registerWsHandler(app);
 
   // Start

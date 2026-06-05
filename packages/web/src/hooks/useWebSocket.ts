@@ -24,6 +24,7 @@ export function useWebSocket(url: string) {
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
+          console.log('[WS] Received:', msg.type, msg.payload?.action ?? '');
           // 事件分发到对应的 handler
           window.dispatchEvent(new CustomEvent('ws:message', { detail: msg }));
         } catch {
@@ -36,7 +37,8 @@ export function useWebSocket(url: string) {
         console.log('[WS] Disconnected');
       };
 
-      ws.onerror = () => {
+      ws.onerror = (err) => {
+        console.error('[WS] Error:', err);
         setState((prev) => ({ ...prev, error: 'WebSocket 连接失败' }));
       };
     } catch (err) {
@@ -52,6 +54,8 @@ export function useWebSocket(url: string) {
   const send = useCallback((data: unknown) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(data));
+    } else {
+      console.warn('[WS] Cannot send, not connected');
     }
   }, []);
 

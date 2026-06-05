@@ -67,10 +67,14 @@ export function createQwenASRSession(options: ASROptions): {
   });
 
   ws.on('message', (data) => {
-    if (Buffer.isBuffer(data)) return;
+    if (Buffer.isBuffer(data)) {
+      console.log('[ASR] Received binary frame, size:', data.length);
+      return;
+    }
 
     try {
       const msg = JSON.parse(data.toString());
+      console.log('[ASR] Received event:', msg.header?.event ?? msg.type ?? 'unknown', JSON.stringify(msg).slice(0, 200));
 
       if (msg.header?.event === 'task-started') {
         console.log('[ASR] Task started');

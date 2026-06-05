@@ -16,6 +16,13 @@ const ASR_SCRIPT: Record<number, { text: string; is_final?: boolean }> = {
 };
 
 /**
+ * Mock 修正事件 — 最终窗口到达时修正之前的错误识别
+ */
+const CORRECTION_EVENTS: Array<{ window_id: number; text: string }> = [
+  { window_id: 0, text: '我' },  // "饿" → "我"
+];
+
+/**
  * WebSocket 消息路由处理
  * 职责：接收 Browser 音频切片和 ASR 事件，协调调度器，广播字幕 Patch
  */
@@ -57,6 +64,21 @@ export function registerWsHandler(app: FastifyInstance): void {
               payload: patch,
               timestamp: Date.now(),
             });
+          }
+
+          // 最终窗口到达时，触发修正事件
+          if (script.is_final) {
+            for (const correction of CORRECTION_EVENTS) {
+              const invalidatePatch = scheduler.handleASRCorrect(correction.window_id, correction.text);
+              if (invalidatePatch) {
+                app.log.info({ window_id: correction.window_id, new_text: correction.text }, 'ASR correction applied');
+                broadcast(clients, {
+                  type: 'subtitle_patch',
+                  payload: invalidatePatch,
+                  timestamp: Date.now(),
+                });
+              }
+            }
           }
         }
       } catch (err) {

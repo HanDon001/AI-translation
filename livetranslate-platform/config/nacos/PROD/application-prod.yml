@@ -1,0 +1,20 @@
+# 公共配置 - 生产环境
+spring:
+  cloud:
+    nacos:
+      discovery:
+        server-addr: nacos:8848
+      config:
+        server-addr: nacos:8848
+        file-extension: yml
+
+# DashScope 配置（从环境变量读取）
+dashscope:
+  api-key: ${DASHSCOPE_API_KEY}
+  ws-url: wss://dashscope.aliyuncs.com/api-ws/v1/realtime
+  default-model: qwen3.5-livetranslate-flash-realtime
+
+# 日志配置
+logging:
+  level:
+    com.livetranslate: info

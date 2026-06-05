@@ -1,0 +1,9 @@
+# ASR 服务配置 - 开发环境
+asr:
+  default-model: qwen3.5-livetranslate-flash-realtime
+  sample-rate: 16000
+  engine: mock  # 开发环境使用 mock，生产环境改为 qwen
+
+dashscope:
+  api-key: ${DASHSCOPE_API_KEY:sk-fd3705af25f64659bed8ee4fdab5185c}
+  ws-url: wss://dashscope.aliyuncs.com/api-ws/v1/realtime

@@ -1,0 +1,27 @@
+# 公共配置 - 开发环境
+spring:
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+      config:
+        server-addr: 127.0.0.1:8848
+        file-extension: yml
+
+# DashScope 配置
+dashscope:
+  api-key: sk-fd3705af25f64659bed8ee4fdab5185c
+  ws-url: wss://dashscope.aliyuncs.com/api-ws/v1/realtime
+  default-model: qwen3.5-livetranslate-flash-realtime
+
+# 翻译服务配置
+translate:
+  mymemory:
+    base-url: https://api.mymemory.translated.net
+  default-source-lang: en
+  default-target-lang: zh
+
+# 日志配置
+logging:
+  level:
+    com.livetranslate: debug

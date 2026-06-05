@@ -1,0 +1,7 @@
+# 翻译服务配置 - 开发环境
+translate:
+  engine: mymemory  # 开发环境使用 MyMemory，生产环境改为 qwen
+  mymemory:
+    base-url: https://api.mymemory.translated.net
+  default-source-lang: en
+  default-target-lang: zh

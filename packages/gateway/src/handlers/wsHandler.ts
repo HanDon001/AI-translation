@@ -4,7 +4,7 @@ import type { BufferNode } from '@realtime-interp/shared';
 import { WINDOW_MS, isAudioChunk } from '@realtime-interp/shared';
 import { RingBuffer } from '../core/RingBuffer.js';
 import { WaitKScheduler } from '../core/WaitKScheduler.js';
-import { MockAsrProvider } from '../mocks/asrMock.js';
+import { createASRSession } from '../services/asrService.js';
 
 /**
  * WebSocket 消息路由处理
@@ -14,8 +14,37 @@ export function registerWsHandler(app: FastifyInstance): void {
   const buffer = new RingBuffer();
   const scheduler = new WaitKScheduler(buffer);
   const clients = new Set<WebSocket>();
-  const asrProvider = new MockAsrProvider();
   let windowId = 0;
+  let apiKey = '';
+  let asrSession: ReturnType<typeof createASRSession> | null = null;
+
+  /** 处理 ASR 识别结果 */
+  async function handleASRText(text: string, isFinal: boolean): Promise<void> {
+    const id = windowId++;
+    const startMs = id * WINDOW_MS;
+
+    app.log.info({ window_id: id, text, is_final: isFinal }, 'ASR text received');
+
+    const asrNode: BufferNode = {
+      window_id: id,
+      source_text: text,
+      translated_text: '',
+      is_final: isFinal,
+      start_ms: startMs,
+      end_ms: startMs + WINDOW_MS,
+    };
+
+    buffer.push(asrNode);
+    const patch = await scheduler.handleASRChunk(asrNode);
+
+    if (patch) {
+      broadcast(clients, {
+        type: 'subtitle_patch',
+        payload: patch,
+        timestamp: Date.now(),
+      });
+    }
+  }
 
   app.get('/ws', { websocket: true }, (socket) => {
     clients.add(socket);
@@ -27,87 +56,44 @@ export function registerWsHandler(app: FastifyInstance): void {
 
         // 处理 API Key 设置
         if (msg.type === 'set_api_key') {
-          scheduler.setApiKey(msg.payload.apiKey);
+          apiKey = msg.payload.apiKey;
+          scheduler.setApiKey(apiKey);
           app.log.info('API Key updated');
           return;
         }
 
         // 处理语音识别文本（麦克风模式 - Web Speech API）
         if (msg.type === 'asr_text') {
-          const { text, is_final } = msg.payload;
-          const id = windowId++;
-          const startMs = id * WINDOW_MS;
-
-          app.log.info({ window_id: id, text, is_final }, 'ASR text received');
-
-          const asrNode: BufferNode = {
-            window_id: id,
-            source_text: text,
-            translated_text: '',
-            is_final: is_final ?? false,
-            start_ms: startMs,
-            end_ms: startMs + WINDOW_MS,
-          };
-
-          buffer.push(asrNode);
-          const patch = await scheduler.handleASRChunk(asrNode);
-
-          if (patch) {
-            broadcast(clients, {
-              type: 'subtitle_patch',
-              payload: patch,
-              timestamp: Date.now(),
-            });
-          }
+          await handleASRText(msg.payload.text, msg.payload.is_final ?? false);
         }
 
-        // 处理音频切片（标签页模式 - 送入 ASR Provider）
+        // 处理音频切片（标签页模式 - 送入 DashScope ASR）
         if (isAudioChunk(msg)) {
           const { window_id, pcm_data } = msg.payload;
           const bytes = pcm_data ? Buffer.from(pcm_data, 'base64').length : 0;
           app.log.info({ window_id, pcm_bytes: bytes }, 'Audio chunk received');
 
-          // 将音频送入 ASR Provider 处理
-          const audioData = pcm_data
-            ? new Float32Array(Buffer.from(pcm_data, 'base64').buffer)
-            : new Float32Array(0);
+          if (!apiKey) {
+            app.log.warn('No API Key, skipping ASR');
+            return;
+          }
 
-          for await (const asrEvent of asrProvider.recognize({ window_id, data: audioData })) {
-            if (asrEvent.type === 'asr_chunk') {
-              const { text, start_ms, end_ms, is_final } = asrEvent.payload;
-              const asrNode: BufferNode = {
-                window_id,
-                source_text: text,
-                translated_text: '',
-                is_final: is_final ?? false,
-                start_ms,
-                end_ms,
-              };
-
-              buffer.push(asrNode);
-              const patch = await scheduler.handleASRChunk(asrNode);
-
-              if (patch) {
-                broadcast(clients, {
-                  type: 'subtitle_patch',
-                  payload: patch,
-                  timestamp: Date.now(),
+          // 首次收到音频时创建 ASR 会话
+          if (!asrSession) {
+            asrSession = createASRSession({
+              apiKey,
+              onResult: (text, isFinal) => {
+                handleASRText(text, isFinal).catch((err) => {
+                  app.log.error(err, 'Failed to handle ASR result');
                 });
-              }
-            }
+              },
+            });
+            app.log.info('ASR session created');
+          }
 
-            if (asrEvent.type === 'asr_correct') {
-              const { window_id: correctId, text } = asrEvent.payload;
-              const invalidatePatch = await scheduler.handleASRCorrect(correctId, text);
-              if (invalidatePatch) {
-                app.log.info({ window_id: correctId, new_text: text }, 'ASR correction applied');
-                broadcast(clients, {
-                  type: 'subtitle_patch',
-                  payload: invalidatePatch,
-                  timestamp: Date.now(),
-                });
-              }
-            }
+          // 发送音频到 ASR
+          if (pcm_data) {
+            asrSession.sendAudio(pcm_data);
           }
         }
       } catch (err) {
@@ -117,6 +103,10 @@ export function registerWsHandler(app: FastifyInstance): void {
 
     socket.on('close', () => {
       clients.delete(socket);
+      if (asrSession) {
+        asrSession.close();
+        asrSession = null;
+      }
       app.log.info(`Client disconnected. Total: ${clients.size}`);
     });
   });

@@ -1,8 +1,9 @@
 @echo off
-title realtime-interp
+chcp 65001 > nul 2>&1
+title LiveTranslate
 
 echo ========================================
-echo   realtime-interp - one click start
+echo   LiveTranslate - One Click Start
 echo ========================================
 echo.
 
@@ -19,8 +20,9 @@ start "Web" /D "%~dp0" pnpm.cmd --filter @realtime-interp/web dev
 
 echo.
 echo ========================================
-echo   Gateway: ws://localhost:3000/ws
-echo   Web:     http://localhost:5173
+echo   Landing:  http://localhost:5173/landing.html
+echo   Console:  http://localhost:5173/index.html
+echo   Gateway:  ws://localhost:3000/ws
 echo ========================================
 echo.
 echo Press any key to close this window...

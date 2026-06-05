@@ -40,12 +40,20 @@ export const SubtitleDisplay = forwardRef(function SubtitleDisplay(_props, ref) 
     const container = containerRef.current;
     if (!container || !payload.target_range) return;
 
+    const startMs = payload.target_range[0];
+    // 如果同一个时间窗口已有 span，直接更新文本（避免重复堆积）
+    const existing = timeMapRef.current.get(startMs);
+    if (existing) {
+      existing.textContent = payload.new_text ?? '';
+      return;
+    }
+
     const span = document.createElement('span');
-    span.dataset.startMs = String(payload.target_range[0]);
+    span.dataset.startMs = String(startMs);
     span.className = 'subtitle-temp text-gray-400 italic transition-opacity duration-50';
     span.textContent = payload.new_text ?? '';
     container.appendChild(span);
-    timeMapRef.current.set(payload.target_range[0], span);
+    timeMapRef.current.set(startMs, span);
 
     // 内存回收
     pruneOldNodes(container);

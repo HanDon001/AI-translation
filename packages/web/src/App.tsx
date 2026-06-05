@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import { AudioRecorder } from './components/AudioRecorder.js';
 import { SubtitleDisplay } from './components/SubtitleDisplay.js';
 import { useWebSocket } from './hooks/useWebSocket.js';
@@ -10,6 +10,18 @@ export default function App() {
   const subtitleRef = useRef<{ handlePatch: (msg: unknown) => void }>(null);
   const windowIdRef = useRef(0);
   const { start: startAudio, stop: stopAudio } = useAudioWorklet();
+
+  // 监听 WS 消息，转发给字幕组件
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const msg = (e as CustomEvent).detail;
+      if (msg?.type === 'subtitle_patch') {
+        subtitleRef.current?.handlePatch(msg);
+      }
+    };
+    window.addEventListener('ws:message', handler);
+    return () => window.removeEventListener('ws:message', handler);
+  }, []);
 
   const handleStart = useCallback(async () => {
     connect();

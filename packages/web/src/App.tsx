@@ -73,8 +73,14 @@ export default function App() {
     } else {
       await startAudio((pcmData: Float32Array) => {
         const windowId = windowIdRef.current++;
-        const buffer = pcmData.buffer;
-        const bytes = new Uint8Array(buffer);
+
+        // Float32 → Int16 PCM 转换
+        const int16 = new Int16Array(pcmData.length);
+        for (let i = 0; i < pcmData.length; i++) {
+          const s = Math.max(-1, Math.min(1, pcmData[i]));
+          int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+        const bytes = new Uint8Array(int16.buffer);
         let binary = '';
         for (let i = 0; i < bytes.length; i++) {
           binary += String.fromCharCode(bytes[i]);

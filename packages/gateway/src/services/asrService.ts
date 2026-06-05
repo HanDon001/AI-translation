@@ -34,6 +34,7 @@ export function createASRSession(options: ASROptions): {
   const pendingChunks: string[] = [];
 
   ws.on('open', () => {
+    console.log('[ASR] WebSocket connected to DashScope');
     taskId = `task-${Date.now()}`;
     ws.send(JSON.stringify({
       header: {
@@ -59,6 +60,7 @@ export function createASRSession(options: ASROptions): {
       const msg = JSON.parse(data.toString());
 
       if (msg.header?.event === 'task-started') {
+        console.log('[ASR] Task started, ready to receive audio');
         isReady = true;
         for (const chunk of pendingChunks) {
           sendChunk(chunk);
@@ -68,12 +70,14 @@ export function createASRSession(options: ASROptions): {
 
       if (msg.header?.event === 'result-generated') {
         const text = msg.payload?.output?.text ?? '';
+        console.log('[ASR] Result:', text);
         if (text) {
           onResult(text, false);
         }
       }
 
       if (msg.header?.event === 'task-finished') {
+        console.log('[ASR] Task finished');
         onResult('', true);
       }
     } catch {

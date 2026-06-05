@@ -9,7 +9,10 @@
 ├── packages/                          # pnpm monorepo 工作区
 │   ├── web/                          # 前端控制台（React + Vite）
 │   ├── gateway/                      # 后端网关（Fastify + WebSocket）
-│   ├── desktop-lyrics/               # 桌面字幕（Python + Win32 API）
+│   ├── desktop-lyrics/               # 桌面字幕（Python + Win32 + GDI+）
+│   │   ├── lyrics_win32.py           # 主实现（逐像素透明 + 鼠标穿透）
+│   │   ├── requirements.txt          # Python 依赖（websocket-client）
+│   │   └── package.json
 │   ├── shared/                       # 共享类型和工具
 │   ├── asr-engine/                   # ASR 引擎（预留）
 │   └── translator/                   # 翻译器（预留）
@@ -210,18 +213,14 @@ if (type === 'response.text.text') {
 
 ### 3. packages/desktop-lyrics - 桌面字幕
 
-**技术栈**: Python + Win32 API (ctypes)
+**技术栈**: Python + Win32 API + GDI+ (ctypes)
 
 **目录结构**:
 ```
 packages/desktop-lyrics/
-├── lyrics_win32.py            # 主实现（纯 ctypes Win32 API）
-├── lyrics_server.py           # PyQt5 版本（备用）
-├── lyrics.py                  # tkinter 版本（备用）
-├── lyrics.html                # HTML 版本（浏览器弹窗）
-├── main.js                    # Electron 版本（未成功）
-├── requirements.txt           # Python 依赖
-└── package.json               # Node.js 配置（Electron 用）
+├── lyrics_win32.py            # 主实现（Win32 + GDI+ 逐像素透明）
+├── requirements.txt           # Python 依赖（websocket-client）
+└── package.json
 ```
 
 **Win32 API 实现原理**:

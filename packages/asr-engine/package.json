@@ -1,0 +1,26 @@
+{
+  "name": "@realtime-interp/asr-engine",
+  "description": "实时同传系统 ASR 语音识别引擎 — 接收 PCM 音频流，输出带时间戳的文本识别结果（V1 Mock 实现）",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "test": "vitest run",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@fastify/cors": "^9.0.0",
+    "@fastify/websocket": "^10.0.0",
+    "@realtime-interp/shared": "workspace:*",
+    "fastify": "^4.26.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.2.0"
+  }
+}

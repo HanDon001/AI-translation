@@ -62,14 +62,13 @@ export function createQwenASRSession(options: ASROptions): {
 
       if (type === 'session.created') {
         console.log('[LiveTranslate] Session created, configuring...');
-        // 配置会话：输出文本 + 音频，目标语言中文
+        // 配置会话：目标语言中文
         ws.send(JSON.stringify({
           type: 'session.update',
-          output_modalities: ['text', 'audio'],
-          voice,
-          input_audio_transcription_model: 'qwen3-asr-flash-realtime',
-          translation_params: {
-            language: targetLang,
+          session: {
+            modalities: ['text'],
+            voice,
+            translation: { language: targetLang },
           },
         }));
       }

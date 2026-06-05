@@ -8,12 +8,12 @@ import { WaitKScheduler } from '../core/WaitKScheduler.js';
 /**
  * Mock ASR 剧本 — "我要去北京"（先识别错再修正）
  */
-const ASR_SCRIPT: Record<number, { text: string; is_final?: boolean }> = {
-  0: { text: '饿' },
-  1: { text: '要' },
-  2: { text: '去北' },
-  3: { text: '京', is_final: true },
-};
+const ASR_SCRIPT: Array<{ text: string; is_final?: boolean }> = [
+  { text: '饿' },      // window 0
+  { text: '要' },      // window 1
+  { text: '去北' },    // window 2
+  { text: '京', is_final: true },  // window 3
+];
 
 /**
  * Mock 修正事件 — 最终窗口到达时修正之前的错误识别
@@ -44,8 +44,9 @@ export function registerWsHandler(app: FastifyInstance): void {
           const pcmBytes = pcm_data ? Buffer.from(pcm_data, 'base64').length : 0;
           app.log.info({ window_id, pcm_bytes: pcmBytes, start_ms }, `Audio chunk received`);
 
-          // Mock ASR: 按剧本返回识别结果
-          const script = ASR_SCRIPT[window_id] ?? { text: `[ASR:${window_id}]` };
+          // Mock ASR: 超出剧本范围的窗口直接忽略
+          const script = ASR_SCRIPT[window_id];
+          if (!script) return;
           const asrNode: BufferNode = {
             window_id,
             source_text: script.text,

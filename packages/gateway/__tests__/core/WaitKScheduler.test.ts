@@ -23,26 +23,26 @@ describe('WaitKScheduler', () => {
     scheduler = new WaitKScheduler(buffer);
   });
 
-  it('returns null when fewer than K windows', () => {
-    const result = scheduler.handleASRChunk(makeNode(0, 'a'));
+  it('returns null when fewer than K windows', async () => {
+    const result = await scheduler.handleASRChunk(makeNode(0, 'a'));
     expect(result).toBeNull();
   });
 
-  it('emits ADD_TEMP when K windows accumulated', () => {
-    scheduler.handleASRChunk(makeNode(0, 'a'));
-    scheduler.handleASRChunk(makeNode(1, 'b'));
-    const result = scheduler.handleASRChunk(makeNode(2, 'c'));
+  it('emits ADD_TEMP when K windows accumulated', async () => {
+    await scheduler.handleASRChunk(makeNode(0, 'a'));
+    await scheduler.handleASRChunk(makeNode(1, 'b'));
+    const result = await scheduler.handleASRChunk(makeNode(2, 'c'));
     expect(result).not.toBeNull();
     expect(result!.action).toBe('ADD_TEMP');
     expect(result!.style).toBe('temp');
   });
 
-  it('emits MARK_FINAL for is_final node', () => {
-    scheduler.handleASRChunk(makeNode(0, 'a'));
-    scheduler.handleASRChunk(makeNode(1, 'b'));
+  it('emits MARK_FINAL for is_final node', async () => {
+    await scheduler.handleASRChunk(makeNode(0, 'a'));
+    await scheduler.handleASRChunk(makeNode(1, 'b'));
     const finalNode = makeNode(2, 'c');
     finalNode.is_final = true;
-    const result = scheduler.handleASRChunk(finalNode);
+    const result = await scheduler.handleASRChunk(finalNode);
     expect(result!.action).toBe('MARK_FINAL');
     expect(result!.style).toBe('final');
   });

@@ -2,6 +2,7 @@ import type { BufferNode, SubtitlePatchPayload } from '@realtime-interp/shared';
 import { K } from '@realtime-interp/shared';
 import { DiffEngine } from './DiffEngine.js';
 import type { RingBuffer } from './RingBuffer.js';
+import { translateText } from '../services/translatorService.js';
 
 /**
  * Wait-K 翻译调度器
@@ -13,21 +14,27 @@ import type { RingBuffer } from './RingBuffer.js';
 export class WaitKScheduler {
   private pendingQueue: BufferNode[] = [];
   private diffEngine = new DiffEngine();
+  private apiKey = '';
 
   constructor(private buffer: RingBuffer) {}
 
+  /** 设置 API Key */
+  setApiKey(key: string): void {
+    this.apiKey = key;
+  }
+
   /** 处理新 ASR 碎片 */
-  handleASRChunk(node: BufferNode): SubtitlePatchPayload | null {
+  async handleASRChunk(node: BufferNode): Promise<SubtitlePatchPayload | null> {
     this.pendingQueue.push(node);
 
     if (this.pendingQueue.length < K) {
-      return null; // 未达到 K 个窗口，等待
+      return null;
     }
 
     const target = this.pendingQueue.shift()!;
     const context = [target, ...this.pendingQueue.slice(0, K - 1)];
 
-    const translatedText = this.translate(context);
+    const translatedText = await this.translate(context);
     target.translated_text = translatedText;
 
     return {
@@ -39,19 +46,17 @@ export class WaitKScheduler {
   }
 
   /** 处理 ASR 修正 */
-  handleASRCorrect(windowId: number, newSourceText: string): SubtitlePatchPayload | null {
+  async handleASRCorrect(windowId: number, newSourceText: string): Promise<SubtitlePatchPayload | null> {
     const node = this.buffer.getByWindowId(windowId);
     if (!node) return null;
 
     const oldTranslation = node.translated_text;
     node.source_text = newSourceText;
 
-    // 提取上下文重译
     const context = this.buffer.getContextRange(windowId, 1, 1);
-    const newTranslation = this.translate(context);
+    const newTranslation = await this.translate(context);
     node.translated_text = newTranslation;
 
-    // 计算差异
     const diff = this.diffEngine.calculateDiff(oldTranslation, newTranslation);
 
     return {
@@ -61,9 +66,19 @@ export class WaitKScheduler {
     };
   }
 
-  private translate(nodes: BufferNode[]): string {
-    const text = nodes.map((n) => n.source_text).join('');
-    // V1 Mock: 临时加 TEMP: 前缀，最终态加 FINAL:
+  private async translate(nodes: BufferNode[]): Promise<string> {
+    const text = nodes.map((n) => n.source_text).join(' ');
+
+    // 有 API Key 时调用真实翻译
+    if (this.apiKey) {
+      try {
+        return await translateText({ text, apiKey: this.apiKey });
+      } catch (err) {
+        console.error('[Translator] API failed, using mock:', err);
+      }
+    }
+
+    // 降级到 Mock
     const isFinal = nodes.some((n) => n.is_final);
     return isFinal ? `[终] ${text}` : `[临] ${text}`;
   }

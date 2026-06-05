@@ -16,6 +16,14 @@ export default function App() {
   const { start: startSpeech, stop: stopSpeech } = useSpeechRecognition();
   const [apiKey, setApiKey] = useState('');
 
+  // API Key 变化时同步到后端
+  const handleApiKeyChange = useCallback((key: string) => {
+    setApiKey(key);
+    if (key) {
+      send({ type: 'set_api_key', payload: { apiKey: key } });
+    }
+  }, [send]);
+
   // 调用 TTS 播放译文
   const playTTS = useCallback(async (text: string) => {
     if (!apiKey) return;
@@ -94,7 +102,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-between bg-gray-950">
-      <Settings onApiKeyChange={setApiKey} />
+      <Settings onApiKeyChange={handleApiKeyChange} />
 
       {/* 控制栏 */}
       <div className="flex-1 flex items-center justify-center">

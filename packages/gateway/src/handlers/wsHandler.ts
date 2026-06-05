@@ -25,6 +25,13 @@ export function registerWsHandler(app: FastifyInstance): void {
       try {
         const msg = JSON.parse(raw.toString());
 
+        // 处理 API Key 设置
+        if (msg.type === 'set_api_key') {
+          scheduler.setApiKey(msg.payload.apiKey);
+          app.log.info('API Key updated');
+          return;
+        }
+
         // 处理语音识别文本（麦克风模式 - Web Speech API）
         if (msg.type === 'asr_text') {
           const { text, is_final } = msg.payload;
@@ -43,7 +50,7 @@ export function registerWsHandler(app: FastifyInstance): void {
           };
 
           buffer.push(asrNode);
-          const patch = scheduler.handleASRChunk(asrNode);
+          const patch = await scheduler.handleASRChunk(asrNode);
 
           if (patch) {
             broadcast(clients, {
@@ -78,7 +85,7 @@ export function registerWsHandler(app: FastifyInstance): void {
               };
 
               buffer.push(asrNode);
-              const patch = scheduler.handleASRChunk(asrNode);
+              const patch = await scheduler.handleASRChunk(asrNode);
 
               if (patch) {
                 broadcast(clients, {
@@ -91,7 +98,7 @@ export function registerWsHandler(app: FastifyInstance): void {
 
             if (asrEvent.type === 'asr_correct') {
               const { window_id: correctId, text } = asrEvent.payload;
-              const invalidatePatch = scheduler.handleASRCorrect(correctId, text);
+              const invalidatePatch = await scheduler.handleASRCorrect(correctId, text);
               if (invalidatePatch) {
                 app.log.info({ window_id: correctId, new_text: text }, 'ASR correction applied');
                 broadcast(clients, {

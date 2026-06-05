@@ -20,6 +20,7 @@ export const SubtitleDisplay = forwardRef(function SubtitleDisplay(_props, ref) 
     handlePatch(msg: unknown) {
       const { payload } = msg as { payload: SubtitlePatchPayload };
       const { action } = payload;
+      console.log('[Subtitle] handlePatch:', action, payload.new_text);
 
       switch (action) {
         case 'ADD_TEMP':

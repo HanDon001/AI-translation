@@ -1,25 +1,23 @@
 @echo off
-chcp 65001 >nul 2>&1
-title 实时同传字幕系统
+title realtime-interp
 
 echo ========================================
-echo   实时同传字幕系统 - 一键启动
+echo   realtime-interp - one click start
 echo ========================================
 echo.
-echo [1/2] 启动 Gateway (ws://localhost:3000)...
-start "Gateway" cmd /c "cd /d %~dp0 && pnpm --filter @realtime-interp/gateway dev"
+echo [1/2] Starting Gateway (ws://localhost:3000)...
+start "Gateway" /D "%~dp0" pnpm.cmd --filter @realtime-interp/gateway dev
 
-timeout /t 2 /nobreak >nul
+timeout /t 3 /nobreak >nul
 
-echo [2/2] 启动 Web 前端 (http://localhost:5173)...
-start "Web" cmd /c "cd /d %~dp0 && pnpm --filter @realtime-interp/web dev"
+echo [2/2] Starting Web (http://localhost:5173)...
+start "Web" /D "%~dp0" pnpm.cmd --filter @realtime-interp/web dev
 
 echo.
 echo ========================================
-echo   启动完成！
 echo   Gateway: ws://localhost:3000/ws
-echo   前端:    http://localhost:5173
+echo   Web:     http://localhost:5173
 echo ========================================
 echo.
-echo 按任意键关闭此窗口（服务继续运行）
+echo Press any key to close this window...
 pause >nul

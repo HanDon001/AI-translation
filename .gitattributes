@@ -1,0 +1,4 @@
+* text=auto
+*.lock binary
+*.sh eol=lf
+*.worklet.ts eol=lf

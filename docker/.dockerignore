@@ -1,0 +1,10 @@
+node_modules
+dist
+build
+.turbo
+.git
+.env
+.env.local
+*.log
+coverage
+**/__tests__

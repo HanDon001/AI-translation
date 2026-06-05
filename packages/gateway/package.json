@@ -1,0 +1,28 @@
+{
+  "name": "@realtime-interp/gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "test": "vitest run",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@fastify/cors": "^9.0.0",
+    "@fastify/websocket": "^10.0.0",
+    "@realtime-interp/shared": "workspace:*",
+    "fastify": "^4.26.0",
+    "pino": "^8.17.0",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/ws": "^8.5.10",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.2.0"
+  }
+}

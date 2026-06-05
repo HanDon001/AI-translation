@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .subtitle-temp {
+    @apply text-gray-400 italic opacity-80;
+  }
+
+  .subtitle-final {
+    @apply text-white font-bold opacity-100;
+  }
+}
+
+@layer utilities {
+  .text-shadow-subtitle {
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+  }
+
+  .transition-duration-50 {
+    transition-duration: 50ms;
+  }
+
+  .transition-duration-100 {
+    transition-duration: 100ms;
+  }
+
+  .animate-pulse-dot {
+    animation: pulse-dot 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.4;
+      transform: scale(0.6);
+    }
+  }
+}

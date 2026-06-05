@@ -3,6 +3,7 @@ import { AudioRecorder } from './components/AudioRecorder.js';
 import { SubtitleDisplay } from './components/SubtitleDisplay.js';
 import { useWebSocket } from './hooks/useWebSocket.js';
 import { useAudioWorklet } from './hooks/useAudioWorklet.js';
+import type { AudioSource } from './hooks/useAudioWorklet.js';
 import { WINDOW_MS } from '@realtime-interp/shared';
 
 export default function App() {
@@ -23,12 +24,12 @@ export default function App() {
     return () => window.removeEventListener('ws:message', handler);
   }, []);
 
-  const handleStart = useCallback(async () => {
+  const handleStart = useCallback(async (source: AudioSource) => {
+    windowIdRef.current = 0;
     connect();
     // 启动音频采集，每 400ms 收到一个切片后发送给后端
     await startAudio((pcmData: Float32Array) => {
       const windowId = windowIdRef.current++;
-      // 将 Float32Array 转为 Base64 编码传输
       const buffer = pcmData.buffer;
       const bytes = new Uint8Array(buffer);
       let binary = '';
@@ -46,7 +47,7 @@ export default function App() {
           pcm_data: base64,
         },
       });
-    });
+    }, source);
   }, [connect, startAudio, send]);
 
   const handleStop = useCallback(() => {

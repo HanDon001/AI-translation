@@ -1,15 +1,18 @@
 import { useRef, useCallback } from 'react';
 import { SAMPLE_RATE } from '@realtime-interp/shared';
 
+export type AudioSource = 'mic' | 'tab';
+
 /**
  * AudioWorklet 切片逻辑 Hook
- * 管理 AudioContext 生命周期和 WorkletNode 通信
+ * 支持麦克风和标签页两种音频源
  */
 export function useAudioWorklet() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
-  const start = useCallback(async (onChunk: (data: Float32Array) => void) => {
+  const start = useCallback(async (onChunk: (data: Float32Array) => void, source: AudioSource = 'mic') => {
     try {
       const ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
       audioContextRef.current = ctx;
@@ -19,8 +22,25 @@ export function useAudioWorklet() {
         new URL('../workers/audio-processor.worklet.ts', import.meta.url)
       );
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const source = ctx.createMediaStreamSource(stream);
+      // 根据音频源类型获取流
+      let stream: MediaStream;
+      if (source === 'tab') {
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          },
+          video: true, // 某些浏览器要求 video: true
+        });
+        // 丢弃视频轨道，只保留音频
+        stream.getVideoTracks().forEach((track) => track.stop());
+      } else {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
+      streamRef.current = stream;
+
+      const mediaSource = ctx.createMediaStreamSource(stream);
       const workletNode = new AudioWorkletNode(ctx, 'audio-processor');
       workletNodeRef.current = workletNode;
 
@@ -31,9 +51,7 @@ export function useAudioWorklet() {
         }
       };
 
-      source.connect(workletNode);
-      // V1: 静音不播放，防止啸叫
-      // workletNode.connect(ctx.destination);
+      mediaSource.connect(workletNode);
     } catch (err) {
       console.error('[AudioWorklet] Failed to start:', err);
       throw err;
@@ -42,8 +60,10 @@ export function useAudioWorklet() {
 
   const stop = useCallback(() => {
     workletNodeRef.current?.disconnect();
+    streamRef.current?.getTracks().forEach((track) => track.stop());
     audioContextRef.current?.close();
     workletNodeRef.current = null;
+    streamRef.current = null;
     audioContextRef.current = null;
   }, []);
 

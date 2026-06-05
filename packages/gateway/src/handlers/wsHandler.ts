@@ -7,6 +7,7 @@ import { WaitKScheduler } from '../core/WaitKScheduler.js';
 
 /**
  * Mock ASR 剧本 — "我要去北京"（先识别错再修正）
+ * 每 4 个窗口一个循环
  */
 const ASR_SCRIPT: Array<{ text: string; is_final?: boolean }> = [
   { text: '饿' },      // window 0
@@ -44,9 +45,9 @@ export function registerWsHandler(app: FastifyInstance): void {
           const pcmBytes = pcm_data ? Buffer.from(pcm_data, 'base64').length : 0;
           app.log.info({ window_id, pcm_bytes: pcmBytes, start_ms }, `Audio chunk received`);
 
-          // Mock ASR: 超出剧本范围的窗口直接忽略
-          const script = ASR_SCRIPT[window_id];
-          if (!script) return;
+          // Mock ASR: 剧本循环播放
+          const scriptIndex = window_id % ASR_SCRIPT.length;
+          const script = ASR_SCRIPT[scriptIndex];
           const asrNode: BufferNode = {
             window_id,
             source_text: script.text,

@@ -16,10 +16,12 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      // WebSocket 代理到 Java 网关
       '/ws': {
         target: 'ws://localhost:3000',
         ws: true,
       },
+      // REST API 代理到 Java 网关
       '/api': {
         target: 'http://localhost:3000',
         changeOrigin: true,

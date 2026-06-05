@@ -2,10 +2,12 @@ interface TopbarProps {
   mode: 'mic' | 'tab';
   srcLang: string;
   tgtLang: string;
+  isRunning: boolean;
   connectionStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
   onModeChange: (mode: 'mic' | 'tab') => void;
   onSrcLangChange: (v: string) => void;
   onTgtLangChange: (v: string) => void;
+  onToggle: () => void;
 }
 
 const STATUS_MAP = {
@@ -16,14 +18,17 @@ const STATUS_MAP = {
 };
 
 export function Topbar({
-  mode, srcLang, tgtLang, connectionStatus,
-  onModeChange, onSrcLangChange, onTgtLangChange,
+  mode, srcLang, tgtLang, isRunning, connectionStatus,
+  onModeChange, onSrcLangChange, onTgtLangChange, onToggle,
 }: TopbarProps) {
   const status = STATUS_MAP[connectionStatus];
 
   return (
     <header className="topbar">
       <div className="topbar-left">
+        <a href="/landing.html" className="topbar-back">
+          <i className="fa-solid fa-arrow-left" /> 返回官网
+        </a>
         <div className="topbar-logo">LT</div>
         <div className="topbar-title">
           LiveTranslate Console
@@ -72,9 +77,13 @@ export function Topbar({
       </div>
 
       <div className="topbar-right">
-        <a href="/landing.html" className="topbar-back">
-          <i className="fa-solid fa-arrow-left" /> 返回官网
-        </a>
+        <button className={`btn-main ${isRunning ? 'running' : 'idle'}`} onClick={onToggle}>
+          {isRunning ? (
+            <><i className="fa-solid fa-stop" /><span>停止翻译</span></>
+          ) : (
+            <><i className="fa-solid fa-play" /><span>开始翻译</span></>
+          )}
+        </button>
       </div>
     </header>
   );

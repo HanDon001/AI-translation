@@ -1,199 +1,237 @@
-# LiveTranslate - 实时同声传译系统
+第一步：技术栈决策与依赖版本锁定
+目标：建立根 pom.xml，锁定所有版本
 
-> 基于 Qwen-LiveTranslate 的实时语音翻译系统，支持麦克风/标签页音频捕获、实时翻译、桌面悬浮字幕
+xml
 
-## 📁 项目目录结构
+<!-- microservice-platform/pom.xml -->
+<properties>
+    <java.version>17</java.version>
+    <spring-boot.version>3.2.0</spring-boot.version>
+    <spring-cloud.version>2023.0.0</spring-cloud.version>
+    <spring-cloud-alibaba.version>2023.0.1.0</spring-cloud-alibaba.version>
+    <mybatis-plus.version>3.5.5</mybatis-plus.version>
+    <hutool.version>5.8.25</hutool.version>
+    <!-- 音频处理 -->
+    <tarsosdsp.version>2.5</tarsosdsp.version>
+    <!-- WebSocket 客户端（调 DashScope） -->
+    <java-websocket.version>1.5.4</java-websocket.version>
+</properties>
 
-```
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-dependencies</artifactId>
+            <version>${spring-boot.version}</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+        <!-- ... Spring Cloud, Alibaba BOM ... -->
+    </dependencies>
+</dependencyManagement>
+
+<modules>
+    <module>common</module>
+    <module>components</module>
+    <module>gateway</module>
+    <module>auth</module>
+    <module>services</module>
+    <module>config</module>
+</modules>
+从 README 中需要迁移的依赖映射：
+
+原 Node.js 依赖
+Java 替代方案
+fastify + @fastify/websocket	Spring Cloud Gateway + WebSocket 支持
+ws (DashScope 客户端)	Java-WebSocket 库
+react + vite	保持不变（前端独立仓库或 components/ 下）
+tailwindcss	保持不变
+ctypes (Win32 API)	JNA / JNR 或保留 Python 作为 sidecar
+
+第二步：重建顶层目录结构
+目标：从 pnpm 扁平结构 → Maven 分层结构
+
+text
+
+# 之前
 同声传译助手/
-├── packages/                          # pnpm monorepo 工作区
-│   ├── web/                          # 前端控制台（React + Vite）
-│   ├── gateway/                      # 后端网关（Fastify + WebSocket）
-│   ├── desktop-lyrics/               # 桌面字幕（Python + Win32 + GDI+）
-│   │   ├── lyrics_win32.py           # 主实现（逐像素透明 + 鼠标穿透）
-│   │   ├── requirements.txt          # Python 依赖（websocket-client）
-│   │   └── package.json
-│   ├── shared/                       # 共享类型和工具
-│   ├── asr-engine/                   # ASR 引擎（预留）
-│   └── translator/                   # 翻译器（预留）
-├── start.bat                          # 一键启动脚本
-├── pnpm-workspace.yaml               # pnpm 工作区配置
-├── package.json                       # 根 package.json
-└── README.md                          # 本文档
-```
+├── packages/
+│   ├── web/
+│   ├── gateway/
+│   ├── desktop-lyrics/
+│   ├── shared/
+│   ├── asr-engine/
+│   └── translator/
+├── start.bat
+└── pnpm-workspace.yaml
 
----
+# 之后
+livetranslate-platform/
+├── pom.xml                          # 根 POM
+├── .gitignore
+├── .editorconfig
+├── README.md
+├── LICENSE
+│
+├── common/                          # 【新建】公共基础模块
+├── components/                      # 【新建】平台组件
+│   └── desktop-lyrics/              # Python 字幕服务迁入
+├── gateway/                         # 【重构】API 网关
+├── auth/                            # 【新建】认证中心
+├── services/                        # 【新建】业务服务群
+│   ├── asr-service/
+│   └── translate-service/
+├── config/                          # 【新建】Nacos 配置导出
+├── docs/                            # 【新建】项目文档
+├── scripts/                         # 【新建】CI/CD 脚本
+├── docker/                          # 【新建】Docker 构建
+└── k8s/                             # 【新建】K8s 部署清单
+前端去哪了？ 两种策略：
 
-## 🏗️ 架构概览
+策略 A：前端作为独立 Git 仓库，不纳入 Java monorepo
+策略 B：放入 components/web-console/，用 frontend-maven-plugin 构建
+第三步：拆分公共基础模块
+目标：将 packages/shared/ 的单一模块拆为 7 个职责模块
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      用户浏览器                               │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
-│  │  官网页面     │  │  控制台页面   │  │  桌面字幕按钮 │       │
-│  │ landing.html │  │  index.html  │  │              │       │
-│  └──────────────┘  └──────┬───────┘  └──────┬───────┘       │
-│                           │ WebSocket        │ HTTP          │
-└───────────────────────────┼──────────────────┼───────────────┘
-                            │                  │
-┌───────────────────────────┼──────────────────┼───────────────┐
-│                      网关服务器               │               │
-│  ┌────────────────────────▼──────────┐  ┌────▼────────────┐  │
-│  │         wsHandler.ts              │  │ lyrics_win32.py │  │
-│  │  - 接收音频数据                    │  │ - Win32 透明窗口│  │
-│  │  - 调用 Qwen ASR                  │  │ - 鼠标穿透      │  │
-│  │  - 返回翻译结果                    │  │ - HTTP API      │  │
-│  └────────────────────────────────────┘  └─────────────────┘  │
-│                                                               │
-│  ┌────────────────────────────────────┐                       │
-│  │       QwenASRService.ts            │                       │
-│  │  - 连接 DashScope WebSocket        │                       │
-│  │  - 发送音频，接收翻译               │                       │
-│  └────────────────────────────────────┘                       │
-└───────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌───────────────────────────────────────────────────────────────┐
-│                    DashScope API                               │
-│  wss://dashscope.aliyuncs.com/api-ws/v1/realtime              │
-│  模型: qwen3.5-livetranslate-flash-realtime                    │
-└───────────────────────────────────────────────────────────────┘
-```
+text
 
----
+# 之前：一个 shared 包全包
+packages/shared/src/
+├── types/events.ts      →  全部类型混在一起
+├── types/subtitle.ts
+├── types/transport.ts
+├── guards/eventGuards.ts
+└── constants.ts
 
-## 📦 模块详解
+# 之后：按职责拆分
+common/
+├── common-core/
+│   └── src/main/java/com/livetranslate/common/core/
+│       ├── exception/                    # 业务异常码枚举
+│       │   └── ErrorCodeEnum.java        # 从 TS 类型守卫迁移
+│       ├── constant/                     # 常量定义
+│       │   └── AudioConstant.java        # 采样率、窗口大小等
+│       └── util/
+│           ├── AudioConvertUtil.java     # Float32/Base64 转换
+│           └── Base64Util.java
+│
+├── common-web/
+│   └── src/main/java/com/livetranslate/common/web/
+│       ├── result/Result.java            # 统一响应体（替代直接返回 JSON）
+│       ├── handler/GlobalExceptionHandler.java
+│       └── config/WebMvcConfig.java
+│
+├── common-redis/
+│   └── src/main/java/com/livetranslate/common/redis/
+│       ├── config/RedisConfig.java       # 会话状态缓存
+│       └── util/SessionCacheUtil.java    # window_id → 会话状态
+│
+├── common-mq/
+│   └── src/main/java/com/livetranslate/common/mq/
+│       ├── producer/TranslationEventPublisher.java  # 翻译结果发布
+│       └── consumer/                      # 字幕推送消费
+│
+├── common-feign/
+│   └── src/main/java/com/livetranslate/common/feign/
+│       ├── interceptor/HeaderTransferInterceptor.java  # 透传 tenant/session
+│       └── fallback/
+│
+├── common-websocket/                     # 【新增】WebSocket 通用
+│   └── src/main/java/com/livetranslate/common/websocket/
+│       ├── handler/AbstractWebSocketHandler.java
+│       ├── session/SessionManager.java   # 替代原 connState 管理
+│       └── message/MessageCodec.java     # 替代原 JSON.parse/stringify
+│
+└── common-security/
+    └── src/main/java/com/livetranslate/common/security/
+        ├── annotation/ApiKeyRequired.java  # 替代原 if(!connState.apiKey)
+        └── filter/ApiKeyAuthFilter.java
+关键迁移点：
 
-### 1. packages/web - 前端控制台
+typescript
 
-**技术栈**: React 18 + TypeScript + Vite + Tailwind CSS
-
-**目录结构**:
-```
-packages/web/
-├── index.html                 # 控制台入口
-├── landing.html               # SaaS 官网页面
-├── vite.config.ts             # Vite 配置（多页面）
-├── package.json
-├── tsconfig.json
-├── src/
-│   ├── main.tsx               # React 入口
-│   ├── App.tsx                # 主组件（核心逻辑）
-│   ├── components/
-│   │   ├── Topbar.tsx         # 顶栏（模式切换、语言选择、状态）
-│   │   ├── ConfigPanel.tsx    # 配置面板（API Key、语言）
-│   │   ├── PipelineSteps.tsx  # 处理管道可视化
-│   │   ├── ResultsPanel.tsx   # 翻译结果展示
-│   │   ├── Waveform.tsx       # 波形可视化（Canvas）
-│   │   ├── LogPanel.tsx       # 实时日志面板
-│   │   ├── Toast.tsx          # Toast 通知
-│   │   └── SubtitleDisplay.tsx # 字幕显示组件
-│   ├── hooks/
-│   │   ├── useWebSocket.ts    # WebSocket 连接 Hook
-│   │   ├── useAudioWorklet.ts # 音频捕获 Hook（AudioWorklet）
-│   │   ├── useSpeechRecognition.ts # Web Speech API Hook
-│   │   ├── usePipelineSteps.ts # 管道状态 Hook
-│   │   └── useConsoleLog.ts   # 日志系统 Hook
-│   ├── workers/
-│   │   └── audio-processor.worklet.ts # AudioWorklet 处理器
-│   └── styles/
-│       ├── index.css          # Tailwind 入口
-│       └── console.css        # 控制台自定义样式
-└── dist/                      # 构建输出
-```
-
-**核心功能**:
-- 麦克风模式：使用 Web Speech API 进行语音识别
-- 标签页模式：捕获标签页音频，发送到网关处理
-- 实时翻译：通过 MyMemory API（麦克风）或网关（标签页）
-- 桌面字幕：调用本地 Python 服务显示悬浮字幕
-
-**关键代码 - App.tsx**:
-```typescript
-// 桌面字幕按钮点击事件
-onClick={async () => {
-  try {
-    const resp = await fetch('http://127.0.0.1:8765/toggle');
-    const data = await resp.json();
-    showToast('ok', data.visible ? '桌面字幕已显示' : '桌面字幕已隐藏');
-  } catch {
-    showToast('err', '桌面字幕服务未启动，请先运行 start.bat');
-  }
-}}
-```
-
----
-
-### 2. packages/gateway - 后端网关
-
-**技术栈**: Fastify + WebSocket + TypeScript
-
-**目录结构**:
-```
-packages/gateway/
-├── src/
-│   ├── index.ts               # 服务入口
-│   ├── handlers/
-│   │   └── wsHandler.ts       # WebSocket 消息处理
-│   ├── services/
-│   │   ├── QwenASRService.ts  # Qwen 实时翻译服务
-│   │   ├── asrService.ts      # ASR 服务（预留）
-│   │   ├── translatorService.ts # 翻译服务
-│   │   └── ttsService.ts      # TTS 服务
-│   ├── core/
-│   │   └── WaitKScheduler.ts  # Wait-K 调度器
-│   ├── config/
-│   │   └── env.ts             # 环境配置
-│   ├── middleware/
-│   │   ├── errorHandler.ts    # 错误处理
-│   │   └── requestLogger.ts   # 请求日志
-│   ├── routes/
-│   │   ├── health.ts          # 健康检查
-│   │   └── tts.ts             # TTS 路由
-│   └── logger/
-│       └── index.ts           # 日志配置
-├── package.json
-└── tsconfig.json
-```
-
-**核心功能**:
-- WebSocket 服务：接收前端音频数据
-- Qwen ASR 集成：调用 DashScope API 进行实时翻译
-- Mock 模式：无 API Key 时使用模拟数据
-
-**wsHandler.ts 核心逻辑**:
-```typescript
-// 接收音频块
-if (isAudioChunk(msg)) {
-  const { window_id, pcm_data } = msg.payload;
-  
-  // 无 API Key 时使用 Mock
-  if (!connState.apiKey) {
-    handleTranslateEvent({ type: 'FINAL', text: MOCK_SCRIPT[idx] });
-    return;
-  }
-  
-  // 有 API Key 时调用 Qwen ASR
-  if (!connState.asrSession) {
-    connState.asrSession = createQwenASRSession({
-      apiKey: connState.apiKey,
-      targetLang: 'zh',
-      onEvent: handleTranslateEvent,
-    });
-  }
-  connState.asrSession.sendAudio(pcm_data);
+// README 中的类型定义 → Java 枚举/类
+// 之前
+export interface SubtitlePatchPayload {
+  action: 'ADD_TEMP' | 'MARK_FINAL' | 'INVALIDATE';
+  target_range: [number, number];
+  new_text: string;
+  style: 'temp' | 'final';
 }
-```
 
-**QwenASRService.ts 核心逻辑**:
-```typescript
-// 连接 DashScope WebSocket
+// 之后
+public class SubtitlePatchPayload {
+    private SubtitleAction action;    // 枚举：ADD_TEMP, MARK_FINAL, INVALIDATE
+    private int[] targetRange;        // [startMs, endMs]
+    private String newText;
+    private SubtitleStyle style;      // 枚举：TEMP, FINAL
+}
+第四步：业务服务拆分 + DDD 分层落地
+目标：将 packages/gateway/ 的混合逻辑拆为独立服务
+
+4.1 ASR 服务
+text
+
+services/asr-service/
+├── pom.xml                          # 聚合 POM
+│
+├── asr-api/                         # 对外暴露
+│   └── src/main/java/com/livetranslate/asr/api/
+│       ├── dto/
+│       │   ├── AudioChunkDTO.java           # 对应原 AudioChunkEvent
+│       │   ├── ASRResultDTO.java
+│       │   └── ASRSessionConfigDTO.java
+│       ├── feign/
+│       │   └── AsrFeignClient.java          # 供 translate-service 调用
+│       └── enums/
+│           └── ASRModelEnum.java            # qwen3-asr-flash-realtime 等
+│
+└── asr-server/                      # 服务实现
+    └── src/main/java/com/livetranslate/asr/
+        ├── interfaces/
+        │   ├── controller/
+        │   │   └── ASRStreamController.java     # HTTP 流式接口
+        │   └── websocket/
+        │       └── ASRWebSocketHandler.java      # WebSocket 接口
+        │
+        ├── application/
+        │   ├── service/
+        │   │   └── ASRApplicationService.java    # 编排：接收音频 → 调引擎 → 发事件
+        │   └── assembler/
+        │       └── ASRResultAssembler.java       # 领域对象 → DTO
+        │
+        ├── domain/
+        │   ├── model/
+        │   │   ├── ASRSession.java               # 聚合根（对应原 connState）
+        │   │   ├── AudioSegment.java             # 实体
+        │   │   └── RecognitionResult.java        # 值对象
+        │   ├── repository/
+        │   │   └── ASRSessionRepository.java     # 仓储接口
+        │   ├── service/
+        │   │   └── QwenASRDomainService.java     # 对应原 QwenASRService.ts
+        │   └── event/
+        │       └── ASRCompletedEvent.java
+        │
+        ├── infrastructure/
+        │   ├── repository/
+        │   │   └── ASRSessionRepositoryImpl.java  # Redis 实现
+        │   ├── external/
+        │   │   └── DashScopeWSClient.java          # 对应原 WebSocket 连接逻辑
+        │   ├── config/
+        │   │   └── DashScopeConfig.java
+        │   └── mq/
+        │       └── ASRResultPublisher.java
+        │
+        └── ASRServiceApplication.java
+核心逻辑迁移对照：
+
+typescript
+
+// ========== README 中的 QwenASRService.ts ==========
 const ws = new WebSocket(
   `wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=${model}`,
   { headers: { Authorization: `Bearer ${apiKey}` } }
 );
-
-// 会话配置
 ws.send(JSON.stringify({
   type: 'session.update',
   session: {
@@ -203,365 +241,454 @@ ws.send(JSON.stringify({
   },
 }));
 
-// 接收翻译结果
-if (type === 'response.text.text') {
-  onEvent({ type: 'CHUNK', text: msg.text + msg.stash });
+// ========== 迁移后：DashScopeWSClient.java ==========
+@Component
+public class DashScopeWSClient {
+
+    public void connect(ASRSessionConfig config) {
+        String url = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model="
+                     + config.getModel();
+        // 使用 Java-WebSocket 库
+        WebSocketClient ws = new WebSocketClient(URI.create(url)) {
+            @Override
+            public void onOpen(ServerHandshake handshake) {
+                // 发送 session.update
+                SessionUpdateRequest req = new SessionUpdateRequest();
+                req.setModalities(List.of("text"));
+                req.setInputAudioTranscription(
+                    new TranscriptionConfig("qwen3-asr-flash-realtime"));
+                req.setTranslation(new TranslationConfig(config.getTargetLang()));
+                this.send(JSON.toJSONString(req));
+            }
+            @Override
+            public void onMessage(String message) {
+                // 解析并发布领域事件
+                handleDashScopeMessage(message);
+            }
+        };
+        ws.addHeader("Authorization", "Bearer " + config.getApiKey());
+        ws.connect();
+    }
 }
-```
+4.2 翻译服务
+text
 
----
+services/translate-service/
+├── translate-api/
+│   └── src/.../api/
+│       ├── dto/
+│       │   ├── TranslateRequestDTO.java
+│       │   └── SubtitlePatchDTO.java        # 对应原 SubtitlePatchPayload
+│       └── feign/TranslateFeignClient.java
+│
+└── translate-server/
+    └── src/.../translate/
+        ├── interfaces/
+        │   ├── controller/TranslateController.java
+        │   └── mq/TranslateResultConsumer.java  # 监听 ASR 结果
+        │
+        ├── application/
+        │   └── service/TranslateApplicationService.java
+        │       # 对应原 WaitKScheduler.ts + 翻译编排逻辑
+        │
+        ├── domain/
+        │   ├── model/
+        │   │   ├── TranslateTask.java           # 聚合根
+        │   │   ├── SubtitleLine.java            # 实体（对应字幕补丁）
+        │   │   └── WaitKBuffer.java             # 值对象（对应 WaitK 调度）
+        │   ├── service/
+        │   │   └── WaitKDomainService.java      # 对应原 WaitKScheduler.ts
+        │   └── repository/TranslateTaskRepository.java
+        │
+        ├── infrastructure/
+        │   ├── external/
+        │   │   ├── MyMemoryTranslator.java     # 对应原 MyMemory API 调用
+        │   │   └── QwenTranslator.java          # 对应原 Qwen 翻译
+        │   └── repository/TranslateTaskRepositoryImpl.java
+        │
+        └── TranslateServiceApplication.java
+4.3 桌面字幕服务
+text
 
-### 3. packages/desktop-lyrics - 桌面字幕
+# 保留 Python 实现，但纳入 components/ 管理
+components/desktop-lyrics/
+├── lyrics_win32.py                 # 核心实现（保持不变）
+├── lyrics_server.py                # 备用
+├── requirements.txt
+├── Dockerfile                      # 【新增】Python 镜像构建
+└── config/
+    └── application.yml             # 【新增】端口、字体等配置外部化
+第五步：网关重构
+目标：从 Fastify WebSocket → Spring Cloud Gateway
 
-**技术栈**: Python + Win32 API + GDI+ (ctypes)
+text
 
-**目录结构**:
-```
-packages/desktop-lyrics/
-├── lyrics_win32.py            # 主实现（Win32 + GDI+ 逐像素透明）
-├── requirements.txt           # Python 依赖（websocket-client）
-└── package.json
-```
+gateway/
+└── gateway-service/
+    └── src/main/java/com/livetranslate/gateway/
+        ├── config/
+        │   ├── RouteConfig.java              # 路由规则
+        │   │   # /api/asr/**  → asr-service
+        │   │   # /api/translate/** → translate-service
+        │   │   # /api/auth/** → auth-service
+        │   └── CorsConfig.java
+        │
+        ├── filter/
+        │   ├── ApiKeyAuthFilter.java         # 对应原 if(!connState.apiKey) 逻辑
+        │   ├── RequestLogFilter.java         # 对应原 requestLogger.ts
+        │   └── WebSocketUpgradeFilter.java   # 【关键】WebSocket 路由透传
+        │
+        ├── handler/
+        │   └── GatewayExceptionHandler.java  # 对应原 errorHandler.ts
+        │
+        └── GatewayApplication.java
+WebSocket 透传的关键改造：
 
-**Win32 API 实现原理**:
-```
-┌─────────────────────────────────────────────────────────┐
-│  桌面歌词核心：四个 Win32 特性叠加                         │
-├─────────────────────────────────────────────────────────┤
-│  1. WS_POPUP           → 无边框窗口                      │
-│  2. WS_EX_LAYERED      → 分层窗口（启用 Alpha 通道）       │
-│  3. AC_SRC_ALPHA        → 逐像素透明（文字不透明背景透明）   │
-│  4. WS_EX_TRANSPARENT   → 鼠标穿透（点击穿过到下层）        │
-│  5. WS_EX_TOPMOST       → 窗口置顶                       │
-└─────────────────────────────────────────────────────────┘
-```
+java
 
-**lyrics_win32.py 核心代码**:
-```python
-# 创建窗口 - 关键样式
-g_hwnd = user32.CreateWindowExW(
-    WS_EX_LAYERED |        # 分层窗口（必须）
-    WS_EX_TRANSPARENT |    # 鼠标穿透
-    WS_EX_TOPMOST |        # 窗口置顶
-    WS_EX_TOOLWINDOW,      # 不在任务栏显示
-    "DesktopLyrics",
-    "",
-    WS_POPUP,              # 无边框
-    x, y, W, H,
-    0, 0, hinstance, None
-)
+// README 中：网关直接处理 WebSocket 消息
+// wsHandler.ts 直接接收 audio_chunk，调用 QwenASRService
 
-# 创建 ARGB 位图
-g_hbitmap = gdi32.CreateDIBSection(hdc, ctypes.byref(bmi), 0,
-                                    ctypes.byref(g_bits_ptr), None, 0)
+// 架构.md 中：网关只做路由，不处理业务
+// WebSocketUpgradeFilter.java
+@Component
+public class WebSocketUpgradeFilter implements GlobalFilter {
 
-# 渲染文字到位图（只画文字，不画背景）
-gdi32.SetBkMode(hdc_mem, 1)  # TRANSPARENT
-user32.DrawTextW(hdc_mem, g_text_main, -1, ctypes.byref(rect), ...)
-
-# 设置 Alpha 通道（GDI 不设置 Alpha，手动处理）
-for i in range(W * H):
-    if bits[i] != 0:
-        bits[i] |= 0xFF000000  # Alpha=255
-
-# 更新窗口（逐像素透明）
-blend = BLENDFUNCTION(AC_SRC_OVER, 0, 255, AC_SRC_ALPHA)
-user32.UpdateLayeredWindow(g_hwnd, hdc, ..., ctypes.byref(blend), 2)
-
-# 窗口过程 - 鼠标穿透
-def wnd_proc(hwnd, msg, wp, lp):
-    if msg == WM_NCHITTEST:
-        return HTTRANSPARENT  # 告诉系统：点到了"透明区域"
-    return 0
-```
-
-**HTTP API**:
-```
-GET http://127.0.0.1:8765/toggle   → 切换显示/隐藏
-GET http://127.0.0.1:8765/show     → 显示
-GET http://127.0.0.1:8765/hide     → 隐藏
-GET http://127.0.0.1:8765/status   → 查询状态
-GET http://127.0.0.1:8765/color/0  → 切换颜色（0-5）
-```
-
----
-
-### 4. packages/shared - 共享模块
-
-**目录结构**:
-```
-packages/shared/
-├── src/
-│   ├── index.ts               # 导出入口
-│   ├── types/
-│   │   ├── events.ts          # 事件类型定义
-│   │   ├── subtitle.ts        # 字幕类型
-│   │   └── transport.ts       # 传输协议
-│   ├── guards/
-│   │   └── eventGuards.ts     # 类型守卫
-│   └── constants.ts           # 常量定义
-├── __tests__/                 # 测试
-└── package.json
-```
-
-**关键类型定义**:
-```typescript
-// 音频块事件
-export interface AudioChunkEvent {
-  type: 'audio_chunk';
-  payload: {
-    window_id: number;
-    start_ms: number;
-    duration: number;
-    pcm_data: string;  // Float32Array Base64 编码
-  };
+    @Override
+    public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+        String path = exchange.getRequest().getPath().value();
+        
+        if (path.startsWith("/ws/asr")) {
+            // 将 WebSocket 连接升级请求透传到 asr-service
+            return chain.filter(exchange);
+        }
+        return chain.filter(exchange);
+    }
 }
+第六步：认证中心新建
+目标：将散落在各处的 API Key 校验集中管理
 
-// 字幕补丁
-export interface SubtitlePatchPayload {
-  action: 'ADD_TEMP' | 'MARK_FINAL' | 'INVALIDATE';
-  target_range: [number, number];
-  new_text: string;
-  style: 'temp' | 'final';
-}
-```
+text
 
----
+auth/
+└── auth-service/
+    └── src/main/java/com/livetranslate/auth/
+        ├── controller/
+        │   ├── AuthController.java           # API Key 验证、令牌发放
+        │   └── ApiKeyController.java         # API Key CRUD
+        │
+        ├── service/
+        │   └── ApiKeyAuthService.java        # 校验逻辑
+        │
+        ├── domain/
+        │   └── model/ApiKey.java             # 聚合根
+        │
+        └── infrastructure/
+            └── repository/ApiKeyMapper.java  # MyBatis-Plus
+迁移对照：
 
-## ⚙️ 配置说明
+typescript
 
-### 环境变量
+// README 中：每个 WebSocket 连接各自校验
+// wsHandler.ts: if (msg.type === 'auth') { connState.apiKey = msg.payload.api_key; }
 
-```bash
-# DashScope API Key（可选，不填使用 Mock 模式）
+// 架构.md 中：统一走认证中心
+// 1. 前端先调 auth-service 获取 JWT
+// 2. 后续请求携带 JWT，网关 filter 统一校验
+// 3. 业务服务不再关心认证逻辑
+第七步：配置中心集成
+目标：从 .env 文件 → Nacos 多环境配置
+
+text
+
+config/
+├── nacos/
+│   ├── DEV/
+│   │   ├── application-dev.yml              # 公共配置
+│   │   │   # dashscope.api-key: sk-xxx
+│   │   │   # mymemory.base-url: https://api.mymemory.translated.net
+│   │   ├── asr-service-dev.yml              # ASR 专属
+│   │   │   # asr.default-model: qwen3.5-livetranslate-flash-realtime
+│   │   │   # asr.sample-rate: 16000
+│   │   ├── translate-service-dev.yml
+│   │   └── gateway-dev.yml
+│   ├── TEST/
+│   └── PROD/
+│       └── gateway-prod.yml                 # 生产环境禁用 Mock
+│
+└── local/
+    └── nacos-standalone.yaml                # 本地 Nacos 配置
+迁移对照：
+
+bash
+
+# README 中的 .env
 DASHSCOPE_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
-
-# 网关端口
 PORT=3000
-
-# 日志级别
 LOG_LEVEL=info
-```
 
-### Vite 配置 (packages/web/vite.config.ts)
+# 架构.md 中的 Nacos 配置
+# application-dev.yml
+dashscope:
+  api-key: sk-xxxxxxxxxxxxxxxxxxxxxxxx
+  ws-url: wss://dashscope.aliyuncs.com/api-ws/v1/realtime
+  default-model: qwen3.5-livetranslate-flash-realtime
 
-```typescript
-export default defineConfig({
-  build: {
-    rollupOptions: {
-      input: {
-        main: resolve(__dirname, 'index.html'),      // 控制台
-        landing: resolve(__dirname, 'landing.html'),  // 官网
-      },
-    },
-  },
+server:
+  port: 3000
+
+logging:
+  level:
+    com.livetranslate: info
+第八步：Mock 模式工程化
+目标：从代码内 if (!apiKey) 判断 → 配置驱动 + 策略模式
+
+java
+
+// README 中的硬编码 Mock
+// wsHandler.ts: if (!connState.apiKey) { handleTranslateEvent({ type: 'FINAL', text: MOCK_SCRIPT[idx] }); }
+
+// 架构.md 中的策略模式
+public interface ASREngine {
+    void sendAudio(byte[] pcmData);
+    void close();
+}
+
+@Service
+@ConditionalOnProperty(name = "asr.engine", havingValue = "mock")
+public class MockASREngine implements ASREngine {
+    // Mock 实现
+}
+
+@Service
+@ConditionalOnProperty(name = "asr.engine", havingValue = "qwen")
+public class QwenASREngine implements ASREngine {
+    // 真实实现
+}
+
+// Nacos 配置切换
+# asr.engine: mock    # 开发环境
+# asr.engine: qwen    # 生产环境
+第九步：基础设施补齐
+9.1 Docker
+dockerfile
+
+# docker/services/asr-server/Dockerfile
+FROM eclipse-temurin:17-jre-alpine
+WORKDIR /app
+COPY target/asr-server.jar app.jar
+ENTRYPOINT ["java", "-jar", "app.jar"]
+yaml
+
+# docker/docker-compose.yml
+version: '3.8'
+services:
+  nacos:
+    image: nacos/nacos-server:v2.3.0
+    ports: ["8848:8848"]
+  
+  gateway:
+    build: ./gateway
+    ports: ["3000:3000"]
+    depends_on: [nacos]
+  
+  asr-service:
+    build: ./services/asr-server
+    depends_on: [nacos]
+  
+  translate-service:
+    build: ./services/translate-server
+    depends_on: [nacos, asr-service]
+  
+  desktop-lyrics:
+    build: ./components/desktop-lyrics   # Python 镜像
+    ports: ["8765:8765"]
+9.2 K8s
+yaml
+
+# k8s/asr-service-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: asr-service
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+        - name: asr-service
+          image: livetranslate/asr-server:latest
+          ports: [{containerPort: 8080}]
+          env:
+            - name: NACOS_ADDR
+              valueFrom:
+                configMapKeyRef:
+                  name: livetranslate-config
+                  key: nacos.addr
+9.3 CI/CD
+groovy
+
+// scripts/ci/Jenkinsfile
+pipeline {
+    agent any
+    stages {
+        stage('Build') {
+            steps {
+                sh 'mvn clean package -DskipTests'
+            }
+        }
+        stage('Test') {
+            steps {
+                sh 'mvn test'
+            }
+        }
+        stage('SonarQube') {
+            steps {
+                sh 'mvn sonar:sonar'
+            }
+        }
+        stage('Docker Build') {
+            steps {
+                sh 'docker build -t livetranslate/asr-server:$BUILD_TAG ./docker/services/asr-server'
+            }
+        }
+        stage('Deploy to K8s') {
+            steps {
+                sh 'kubectl apply -f k8s/'
+            }
+        }
+    }
+}
+第十步：文档体系重建
+目标：从单个 README → 分层文档
+
+text
+
+docs/
+├── architecture.md                  # 【改造后的主文档，对应架构.md 风格】
+├── api-design/
+│   ├── websocket-protocol.md        # 从 README「API 接口」章节迁移
+│   ├── rest-api.md                  # 新增 REST 接口文档
+│   └── subtitle-http-api.md         # 从 README「桌面字幕 HTTP API」迁移
+├── database/
+│   ├── V1.0__init_schema.sql        # 新增：API Key 表、用户表
+│   └── V1.1__add_session_table.sql  # 新增：会话持久化
+├── diagrams/
+│   ├── overall-architecture.drawio  # 从 README「架构概览」ASCII 图迁移
+│   ├── asr-flow-sequence.drawio     # 新增：ASR 处理时序图
+│   └── waitk-algorithm.drawio       # 新增：Wait-K 算法流程图
+├── migration/
+│   └── node-to-java-migration.md    # 【本文档】迁移指南
+└── decisions/
+    ├── ADR-001-use-nacos.md         # 架构决策记录
+    └── ADR-002-keep-python-lyrics.md # 为什么字幕服务保留 Python
+第十一步：前端改造（如采用策略 B）
+text
+
+components/web-console/
+├── package.json
+├── vite.config.ts                   # 保持不变
+├── src/                             # 保持原有 React 代码结构
+│   ├── App.tsx
+│   ├── hooks/
+│   │   ├── useWebSocket.ts          # 修改：连接网关而非直连 gateway
+│   │   └── ...
+│   └── ...
+└── Dockerfile                       # 【新增】Nginx 静态托管
+前端改动点：
+
+typescript
+
+// README 中：直连后端
+const ws = new WebSocket('ws://localhost:3000');
+
+// 架构.md 中：通过网关
+const ws = new WebSocket('ws://gateway:3000/ws/asr');
+// 并在握手时携带 JWT
+const ws = new WebSocket('ws://gateway:3000/ws/asr', [], {
+  headers: { Authorization: `Bearer ${token}` }
 });
-```
+第十二步：工程规范落地
+目标：补充架构.md 中要求的工程化约定
 
-### 模型配置
+xml
 
-| 配置项 | 默认值 | 说明 |
-|--------|--------|------|
-| model | qwen3.5-livetranslate-flash-realtime | Qwen 翻译模型 |
-| targetLang | zh | 目标语言 |
-| sampleRate | 16000 | 采样率 |
-| voice | default | 音色（仅音频输出时） |
+<!-- 根 pom.xml 中强制接入 -->
+<plugins>
+    <!-- Checkstyle -->
+    <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-checkstyle-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+            <execution>
+                <goals><goal>check</goal></execution>
+            </execution>
+        </executions>
+    </plugin>
+    
+    <!-- SpotBugs -->
+    <plugin>
+        <groupId>com.github.spotbugs</groupId>
+        <artifactId>spotbugs-maven-plugin</artifactId>
+        <version>4.8.3.0</version>
+    </plugin>
+</plugins>
+新增 .editorconfig：
 
----
+ini
 
-## 🚀 启动方式
+root = true
 
-### 一键启动
+[*]
+indent_style = space
+indent_size = 4
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
 
-```bash
-start.bat
-```
+[*.{ts,tsx,json,yml}]
+indent_size = 2
 
-会启动：
-1. 网关服务 (ws://localhost:3000)
-2. 前端控制台 (http://localhost:5173)
-3. 桌面字幕服务 (http://127.0.0.1:8765)
+[*.java]
+indent_size = 4
+改造优先级与工时估算
+优先级
+步骤
+工时估算
+前置依赖
+P0	第二步：目录结构重建	0.5 天	无
+P0	第三步：common 模块拆分	2 天	第二步
+P0	第四步：ASR/翻译服务 DDD 拆分	5 天	第三步
+P0	第五步：网关重构	2 天	第四步
+P1	第六步：认证中心	2 天	第五步
+P1	第七步：Nacos 配置集成	1 天	第四步
+P1	第八步：Mock 模式工程化	1 天	第四步
+P2	第九步：Docker/K8s/CI	2 天	第四步
+P2	第十步：文档重建	1.5 天	全部
+P2	第十一步：前端适配	1 天	第五步
+P2	第十二步：工程规范	0.5 天	第二步
+总计	~18.5 天	
 
-### 手动启动
+不建议迁移的部分
+以下内容在架构.md 中没有对应物，建议保持原样或降级处理：
 
-```bash
-# 1. 启动网关
-cd packages/gateway
-pnpm dev
+Win32 桌面字幕：Java 没有对等的原生 Win32 透明窗口方案（JNA 可行但复杂度高），保留 Python sidecar 是合理决策
+AudioWorklet 处理器：这是浏览器端技术，与后端架构无关，保持不变
+Web Speech API Hook：纯前端能力，保持不变
+start.bat：在 Docker Compose 就绪前，可保留作为本地快速启动方式
+最终交付物清单
+改造完成后，应产出：
 
-# 2. 启动前端
-cd packages/web
-pnpm dev
-
-# 3. 启动桌面字幕（可选）
-cd packages/desktop-lyrics
-python lyrics_win32.py
-```
-
----
-
-## 📡 API 接口
-
-### WebSocket 消息协议
-
-**客户端 → 服务端**:
-```json
-{
-  "type": "audio_chunk",
-  "payload": {
-    "window_id": 0,
-    "start_ms": 0,
-    "duration": 400,
-    "pcm_data": "base64..."
-  }
-}
-```
-
-**服务端 → 客户端**:
-```json
-{
-  "type": "subtitle_patch",
-  "payload": {
-    "action": "ADD_TEMP",
-    "target_range": [0, 400],
-    "new_text": "翻译结果",
-    "style": "temp"
-  }
-}
-```
-
-### 桌面字幕 HTTP API
-
-```
-GET http://127.0.0.1:8765/toggle   → {"visible": true/false}
-GET http://127.0.0.1:8765/show     → {"visible": true}
-GET http://127.0.0.1:8765/hide     → {"visible": false}
-GET http://127.0.0.1:8765/status   → {"visible": true/false}
-GET http://127.0.0.1:8765/color/0  → {"ok": true}
-```
-
----
-
-## 🎯 功能特性
-
-### 1. 麦克风模式
-- 使用浏览器原生 Web Speech API
-- 支持 8 种语言：英/中/日/韩/法/德/西/俄
-- 通过 MyMemory API 翻译（免费）
-
-### 2. 标签页模式
-- 捕获标签页音频（getDisplayMedia）
-- 发送到网关进行 ASR + 翻译
-- 使用 Qwen LiveTranslate API
-
-### 3. 桌面字幕
-- Win32 原生透明窗口
-- 鼠标穿透（点击穿过）
-- 置顶显示
-- 自动连接网关接收翻译
-- 双击切换颜色（白/蓝/紫/红/绿/黄）
-
-### 4. 处理管道可视化
-- 7 步管道：init → ws → auth → vad → asr → mt → post
-- 实时状态更新
-- 延迟显示
-
-### 5. 实时日志
-- 彩色日志标签（INFO/OK/DATA/WARN/ERR）
-- 自动滚动
-- 支持清空
-
----
-
-## 🔧 依赖安装
-
-### Node.js 依赖
-
-```bash
-# 安装所有依赖
-pnpm install
-
-# 或单独安装
-cd packages/web && pnpm install
-cd packages/gateway && pnpm install
-```
-
-### Python 依赖（桌面字幕）
-
-```bash
-cd packages/desktop-lyrics
-pip install websocket-client -i https://pypi.tuna.tsinghua.edu.cn/simple
-```
-
----
-
-## 🐛 常见问题
-
-### 1. 桌面字幕服务未启动
-
-**错误**: `桌面字幕服务未启动，请先运行 start.bat`
-
-**解决**:
-```bash
-cd packages/desktop-lyrics
-python lyrics_win32.py
-```
-
-### 2. 翻译无输出
-
-**原因**: 未配置 API Key 或网关未启动
-
-**解决**:
-1. 确保网关已启动
-2. 在控制台输入 DashScope API Key
-3. 或使用 Mock 模式（不填 API Key）
-
-### 3. Electron 启动失败
-
-**原因**: Electron 安装问题
-
-**解决**: 使用 Python 版本替代
-```bash
-cd packages/desktop-lyrics
-python lyrics_win32.py
-```
-
----
-
-## 📝 开发说明
-
-### 添加新语言
-
-编辑 `packages/web/src/App.tsx`:
-```typescript
-const LANG_MAP: Record<string, string> = {
-  'en-US': 'en',
-  'zh-CN': 'zh',
-  // 添加新语言...
-};
-```
-
-### 修改翻译模型
-
-编辑 `packages/gateway/src/services/QwenASRService.ts`:
-```typescript
-const model = 'qwen3.5-livetranslate-flash-realtime';
-```
-
-### 自定义桌面字幕样式
-
-编辑 `packages/desktop-lyrics/lyrics_win32.py`:
-```python
-W, H = 900, 100  # 窗口尺寸
-COLORS = [
-    (255, 255, 255),  # 白色
-    (0, 224, 158),    # 绿色
-    # 添加更多颜色...
-]
-```
-
----
-
-## 📄 许可证
-
-MIT License
+ 符合架构.md 目录骨架的 Maven 工程
+ 7 个 common-* 模块，每个可独立引入
+ asr-service 和 translate-service 各含 api + server 双模块
+ 每个服务内部遵循 DDD 四层架构
+ Spring Cloud Gateway 替代 Fastify
+ Nacos 配置中心替代 .env
+ config/nacos/ 下三套环境配置
+ docker/docker-compose.yml 可一键拉起全栈
+ k8s/ 下各服务 Deployment + Ingress
+ docs/ 下完整文档体系
+ 根 pom.xml 统一管理所有版本
+ Checkstyle + SonarQube 接入

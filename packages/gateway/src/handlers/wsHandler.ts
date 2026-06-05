@@ -6,6 +6,9 @@ import { RingBuffer } from '../core/RingBuffer.js';
 import { WaitKScheduler } from '../core/WaitKScheduler.js';
 import { createASRSession } from '../services/asrService.js';
 
+// Mock ASR 剧本（降级用）
+const MOCK_SCRIPT = ['Hello', 'everyone', 'welcome to', 'the meeting'];
+
 /**
  * WebSocket 消息路由处理
  * 接收前端音频切片或语音识别文本，通过 ASR + Wait-K 调度翻译，广播字幕 Patch
@@ -73,22 +76,31 @@ export function registerWsHandler(app: FastifyInstance): void {
           const bytes = pcm_data ? Buffer.from(pcm_data, 'base64').length : 0;
           app.log.info({ window_id, pcm_bytes: bytes }, 'Audio chunk received');
 
+          // 无 API Key 时用 Mock ASR 降级
           if (!apiKey) {
-            app.log.warn('No API Key, skipping ASR');
+            const mockText = MOCK_SCRIPT[window_id % MOCK_SCRIPT.length];
+            await handleASRText(mockText, window_id % MOCK_SCRIPT.length === MOCK_SCRIPT.length - 1);
             return;
           }
 
           // 首次收到音频时创建 ASR 会话
           if (!asrSession) {
-            asrSession = createASRSession({
-              apiKey,
-              onResult: (text, isFinal) => {
-                handleASRText(text, isFinal).catch((err) => {
-                  app.log.error(err, 'Failed to handle ASR result');
-                });
-              },
-            });
-            app.log.info('ASR session created');
+            try {
+              asrSession = createASRSession({
+                apiKey,
+                onResult: (text, isFinal) => {
+                  handleASRText(text, isFinal).catch((err) => {
+                    app.log.error(err, 'Failed to handle ASR result');
+                  });
+                },
+              });
+              app.log.info('ASR session created');
+            } catch (err) {
+              app.log.error(err, 'Failed to create ASR session, using mock');
+              const mockText = MOCK_SCRIPT[window_id % MOCK_SCRIPT.length];
+              await handleASRText(mockText, window_id % MOCK_SCRIPT.length === MOCK_SCRIPT.length - 1);
+              return;
+            }
           }
 
           // 发送音频到 ASR

@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  # Nacos 配置中心
+  nacos:
+    image: nacos/nacos-server:v2.3.0
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+    environment:
+      - MODE=standalone
+      - SPRING_DATASOURCE_PLATFORM=
+    volumes:
+      - nacos_data:/home/nacos/data
+
+  # API 网关
+  gateway:
+    build:
+      context: ../gateway/gateway-service
+      dockerfile: ../../docker/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - NACOS_ADDR=nacos:8848
+    depends_on:
+      - nacos
+
+  # ASR 服务
+  asr-service:
+    build:
+      context: ../services/asr-service/asr-server
+      dockerfile: ../../../docker/Dockerfile
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - NACOS_ADDR=nacos:8848
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
+    depends_on:
+      - nacos
+
+  # 翻译服务
+  translate-service:
+    build:
+      context: ../services/translate-service/translate-server
+      dockerfile: ../../../docker/Dockerfile
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - NACOS_ADDR=nacos:8848
+    depends_on:
+      - nacos
+
+  # 桌面字幕服务
+  desktop-lyrics:
+    build:
+      context: ../components/desktop-lyrics
+    ports:
+      - "8765:8765"
+    volumes:
+      - ../components/desktop-lyrics:/app
+    working_dir: /app
+    command: python lyrics_win32.py
+
+volumes:
+  nacos_data:

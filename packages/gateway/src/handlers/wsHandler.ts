@@ -6,31 +6,14 @@ import { RingBuffer } from '../core/RingBuffer.js';
 import { WaitKScheduler } from '../core/WaitKScheduler.js';
 
 /**
- * Mock ASR 剧本 — "我要去北京"（先识别错再修正）
- * 每 4 个窗口一个循环
- */
-const ASR_SCRIPT: Array<{ text: string; is_final?: boolean }> = [
-  { text: '饿' },      // window 0
-  { text: '要' },      // window 1
-  { text: '去北' },    // window 2
-  { text: '京', is_final: true },  // window 3
-];
-
-/**
- * Mock 修正事件 — 最终窗口到达时修正之前的错误识别
- */
-const CORRECTION_EVENTS: Array<{ window_id: number; text: string }> = [
-  { window_id: 0, text: '我' },  // "饿" → "我"
-];
-
-/**
  * WebSocket 消息路由处理
- * 职责：接收 Browser 音频切片和 ASR 事件，协调调度器，广播字幕 Patch
+ * 接收前端语音识别文本，通过 Wait-K 调度翻译，广播字幕 Patch
  */
 export function registerWsHandler(app: FastifyInstance): void {
   const buffer = new RingBuffer();
   const scheduler = new WaitKScheduler(buffer);
   const clients = new Set<WebSocket>();
+  let windowId = 0;
 
   app.get('/ws', { websocket: true }, (socket) => {
     clients.add(socket);
@@ -40,21 +23,21 @@ export function registerWsHandler(app: FastifyInstance): void {
       try {
         const msg = JSON.parse(raw.toString());
 
-        if (isAudioChunk(msg)) {
-          const { window_id, start_ms, pcm_data } = msg.payload;
-          const pcmBytes = pcm_data ? Buffer.from(pcm_data, 'base64').length : 0;
-          app.log.info({ window_id, pcm_bytes: pcmBytes, start_ms }, `Audio chunk received`);
+        // 处理语音识别文本
+        if (msg.type === 'asr_text') {
+          const { text, is_final } = msg.payload;
+          const id = windowId++;
+          const startMs = id * WINDOW_MS;
 
-          // Mock ASR: 剧本循环播放
-          const scriptIndex = window_id % ASR_SCRIPT.length;
-          const script = ASR_SCRIPT[scriptIndex];
+          app.log.info({ window_id: id, text, is_final }, 'ASR text received');
+
           const asrNode: BufferNode = {
-            window_id,
-            source_text: script.text,
+            window_id: id,
+            source_text: text,
             translated_text: '',
-            is_final: script.is_final ?? false,
-            start_ms,
-            end_ms: start_ms + WINDOW_MS,
+            is_final: is_final ?? false,
+            start_ms: startMs,
+            end_ms: startMs + WINDOW_MS,
           };
 
           buffer.push(asrNode);
@@ -67,21 +50,13 @@ export function registerWsHandler(app: FastifyInstance): void {
               timestamp: Date.now(),
             });
           }
+        }
 
-          // 最终窗口到达时，触发修正事件
-          if (script.is_final) {
-            for (const correction of CORRECTION_EVENTS) {
-              const invalidatePatch = scheduler.handleASRCorrect(correction.window_id, correction.text);
-              if (invalidatePatch) {
-                app.log.info({ window_id: correction.window_id, new_text: correction.text }, 'ASR correction applied');
-                broadcast(clients, {
-                  type: 'subtitle_patch',
-                  payload: invalidatePatch,
-                  timestamp: Date.now(),
-                });
-              }
-            }
-          }
+        // 处理音频切片（标签页模式，暂仅记录）
+        if (isAudioChunk(msg)) {
+          const { window_id, pcm_data } = msg.payload;
+          const bytes = pcm_data ? Buffer.from(pcm_data, 'base64').length : 0;
+          app.log.info({ window_id, pcm_bytes: bytes }, 'Audio chunk received (no ASR connected)');
         }
       } catch (err) {
         app.log.error(err, 'Failed to process WS message');

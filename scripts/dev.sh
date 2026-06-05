@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 set -e
 
-echo "=== Starting all services in dev mode ==="
+echo "=== 启动核心服务 ==="
+echo "  Gateway → ws://localhost:3000/ws"
+echo "  Web     → http://localhost:5173"
+echo ""
 
-# Start each service in parallel
-pnpm --filter @realtime-interp/asr-engine dev &
-pnpm --filter @realtime-interp/translator dev &
+# 启动核心服务（gateway + web）
 pnpm --filter @realtime-interp/gateway dev &
 pnpm --filter @realtime-interp/web dev &
 
-# Wait for any process to exit
-wait -n
-
-# Kill remaining background processes on exit
+# 等待任意进程退出后清理
 trap 'kill 0' EXIT
+wait -n

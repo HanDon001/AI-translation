@@ -2,7 +2,9 @@
   "name": "realtime-interp",
   "private": true,
   "scripts": {
+    "start": "pnpm --filter @realtime-interp/gateway dev & pnpm --filter @realtime-interp/web dev",
     "dev": "turbo dev",
+    "dev:core": "pnpm --filter @realtime-interp/gateway dev & pnpm --filter @realtime-interp/web dev",
     "build": "turbo build",
     "test": "turbo test",
     "lint": "turbo lint",

@@ -56,7 +56,9 @@ export default function App() {
   const [liveLabel, setLiveLabel] = useState('识别中');
   const [isTranslating, setIsTranslating] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
-  const [apiKey, setApiKey] = useState('');
+  const [apiKey, setApiKey] = useState('sk-fd3705af25f64659bed8ee4fdab5185c');
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [tempApiKey, setTempApiKey] = useState('');
 
   const isRunningRef = useRef(false);
   const sessionSecondsRef = useRef(0);
@@ -354,6 +356,13 @@ export default function App() {
       return;
     }
 
+    // 检查 API Key
+    if (!apiKey.trim()) {
+      setShowApiKeyModal(true);
+      setTempApiKey('');
+      return;
+    }
+
     // 启动
     isRunningRef.current = true;
     setIsRunning(true);
@@ -447,12 +456,17 @@ export default function App() {
           stream.getVideoTracks().forEach(t => t.stop());
           setupAudioAnalyser(stream);
 
-          // 使用 AudioWorklet 捕获音频块并发送到网关
+          // 使用 AudioWorklet 捕获音频块并发送到网关，传入已有的流
           startWorklet((chunk: Float32Array) => {
             if (!isRunningRef.current) return;
 
-            // 将 Float32Array 转换为 base64（保持 float32 格式，网关期望的是 Float32Array base64）
-            const bytes = new Uint8Array(chunk.buffer);
+            // 将 Float32Array 转换为 PCM16 格式（DashScope API 要求）
+            const pcm16 = new Int16Array(chunk.length);
+            for (let i = 0; i < chunk.length; i++) {
+              const s = Math.max(-1, Math.min(1, chunk[i]));
+              pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+            const bytes = new Uint8Array(pcm16.buffer);
             const base64 = btoa(String.fromCharCode(...bytes));
 
             const windowId = windowIdRef.current++;
@@ -471,7 +485,7 @@ export default function App() {
 
             // 更新 VAD 状态
             setStepState('vad', 'active', '检测语音活动...');
-          }, 'tab');
+          }, 'tab', stream);  // 传入已有的流，避免重复调用 getDisplayMedia
 
           addConsoleLog('ok', '标签页音频已捕获，开始发送到网关');
           setStepState('vad', 'active', '等待语音...');
@@ -615,6 +629,20 @@ export default function App() {
                 )}
               </button>
             </div>
+
+            {/* 连接状态 */}
+            <div className="ctrl-row" style={{ marginTop: 12 }}>
+              <span className="ctrl-label">模型状态</span>
+              <div className={`status-dot ${connectionStatus === 'connected' ? 'connected' : connectionStatus === 'error' ? 'error' : ''}`} style={{ fontSize: 10, padding: '3px 10px' }}>
+                <div className="dot" />
+                <span>
+                  {connectionStatus === 'disconnected' && '未连接'}
+                  {connectionStatus === 'connecting' && '连接中...'}
+                  {connectionStatus === 'connected' && '已连接'}
+                  {connectionStatus === 'error' && '连接失败'}
+                </span>
+              </div>
+            </div>
           </div>
 
           <PipelineSteps steps={steps} />
@@ -643,6 +671,50 @@ export default function App() {
       </div>
 
       <ToastContainer toasts={toasts} />
+
+      {/* API Key 弹窗 */}
+      {showApiKeyModal && (
+        <div className="modal-overlay" onClick={() => setShowApiKeyModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3><i className="fa-solid fa-key" /> 输入 API Key</h3>
+              <button className="modal-close" onClick={() => setShowApiKeyModal(false)}>
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+            <div className="modal-body">
+              <p className="modal-desc">请输入 DashScope API Key 以使用实时翻译功能</p>
+              <input
+                type="password"
+                className="modal-input"
+                placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
+                value={tempApiKey}
+                onChange={(e) => setTempApiKey(e.target.value)}
+                autoFocus
+              />
+              <p className="modal-hint">
+                <i className="fa-solid fa-circle-info" />
+                API Key 可在阿里云百炼平台获取
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button className="modal-btn cancel" onClick={() => setShowApiKeyModal(false)}>取消</button>
+              <button
+                className="modal-btn confirm"
+                onClick={() => {
+                  if (tempApiKey.trim()) {
+                    setApiKey(tempApiKey.trim());
+                    setShowApiKeyModal(false);
+                    showToast('ok', 'API Key 已设置');
+                  }
+                }}
+              >
+                确认
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

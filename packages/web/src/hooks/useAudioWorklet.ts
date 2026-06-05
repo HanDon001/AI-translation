@@ -12,7 +12,11 @@ export function useAudioWorklet() {
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const start = useCallback(async (onChunk: (data: Float32Array) => void, source: AudioSource = 'mic') => {
+  const start = useCallback(async (
+    onChunk: (data: Float32Array) => void,
+    source: AudioSource = 'mic',
+    existingStream?: MediaStream
+  ) => {
     try {
       const ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
       audioContextRef.current = ctx;
@@ -22,16 +26,18 @@ export function useAudioWorklet() {
         new URL('../workers/audio-processor.worklet.ts', import.meta.url)
       );
 
-      // 根据音频源类型获取流
+      // 使用外部传入的流，或者自己获取
       let stream: MediaStream;
-      if (source === 'tab') {
+      if (existingStream) {
+        stream = existingStream;
+      } else if (source === 'tab') {
         stream = await navigator.mediaDevices.getDisplayMedia({
           audio: {
             echoCancellation: false,
             noiseSuppression: false,
             autoGainControl: false,
           },
-          video: true, // 某些浏览器要求 video: true
+          video: true,
         });
         // 丢弃视频轨道，只保留音频
         stream.getVideoTracks().forEach((track) => track.stop());

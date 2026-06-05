@@ -1,0 +1,19 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: translate-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+
+translate:
+  engine: mymemory
+  mymemory:
+    base-url: https://api.mymemory.translated.net
+
+logging:
+  level:
+    com.livetranslate: debug

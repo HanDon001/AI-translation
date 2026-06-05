@@ -1,0 +1,19 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: asr-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+
+asr:
+  engine: mock
+  default-model: qwen3.5-livetranslate-flash-realtime
+  sample-rate: 16000
+
+logging:
+  level:
+    com.livetranslate: debug

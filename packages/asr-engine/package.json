@@ -1,5 +1,6 @@
 {
   "name": "@realtime-interp/asr-engine",
+  "description": "实时同传系统 ASR 语音识别引擎 — 接收 PCM 音频流，输出带时间戳的文本识别结果（V1 Mock 实现）",
   "version": "0.1.0",
   "private": true,
   "type": "module",

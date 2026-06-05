@@ -1,5 +1,6 @@
 {
   "name": "@realtime-interp/web",
+  "description": "实时同传系统前端 — React 18 + Vite + Tailwind CSS，AudioWorklet 音频采集与 useRef 无闪烁字幕渲染",
   "version": "0.1.0",
   "private": true,
   "type": "module",

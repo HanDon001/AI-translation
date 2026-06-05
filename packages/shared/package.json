@@ -1,5 +1,6 @@
 {
   "name": "@realtime-interp/shared",
+  "description": "实时同传系统共享模块 — TypeScript 类型定义、通信协议、常量与运行时类型守卫",
   "version": "0.1.0",
   "private": true,
   "type": "module",

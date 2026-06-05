@@ -1,5 +1,6 @@
 {
   "name": "@realtime-interp/translator",
+  "description": "实时同传系统翻译引擎 — 接收 ASR 文本，输出目标语言译文（V1 Mock 实现）",
   "version": "0.1.0",
   "private": true,
   "type": "module",

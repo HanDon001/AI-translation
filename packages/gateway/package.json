@@ -1,5 +1,6 @@
 {
   "name": "@realtime-interp/gateway",
+  "description": "实时同传系统网关服务 — Fastify + WebSocket，负责音频接收、Wait-K 调度、LCS Diff 引擎与字幕 Patch 广播",
   "version": "0.1.0",
   "private": true,
   "type": "module",

@@ -9,7 +9,19 @@ import { registerWsHandler } from './handlers/index.js';
 const env = loadEnv();
 
 async function bootstrap(): Promise<void> {
-  const app = Fastify({ logger: { level: env.LOG_LEVEL } });
+  const app = Fastify({
+    logger: {
+      level: env.LOG_LEVEL ?? 'info',
+      transport: {
+        target: 'pino-pretty',
+        options: {
+          colorize: true,
+          translateTime: 'SYS:HH:MM:ss',
+          ignore: 'pid,hostname',
+        },
+      },
+    },
+  });
 
   // Register plugins
   await app.register(cors, { origin: true });
@@ -27,7 +39,11 @@ async function bootstrap(): Promise<void> {
   // Start
   try {
     await app.listen({ port: env.PORT, host: '0.0.0.0' });
-    app.log.info(`Gateway running on ws://localhost:${env.PORT}/ws`);
+    app.log.info('─'.repeat(50));
+    app.log.info(`🚀 Gateway running on ws://localhost:${env.PORT}/ws`);
+    app.log.info(`📡 Health check: http://localhost:${env.PORT}/health`);
+    app.log.info(`📁 Logs: ${process.cwd()}/logs/`);
+    app.log.info('─'.repeat(50));
   } catch (err) {
     app.log.error(err);
     process.exit(1);

@@ -17,9 +17,9 @@ start "Web" pnpm.cmd --filter @realtime-interp/web dev
 
 timeout /t 2 /nobreak >nul
 
-echo [3/3] Starting Desktop Subtitles Service...
+echo [3/3] Starting Desktop Subtitles...
 cd packages\desktop-lyrics
-start "DesktopSubtitles" python lyrics_server.py
+start "DesktopSubtitles" python lyrics_win32.py
 cd ..\..
 
 echo.

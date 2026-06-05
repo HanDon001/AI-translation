@@ -63,6 +63,13 @@ export default function App() {
     windowIdRef.current = 0;
     connect();
 
+    // 连接后同步 API Key 到后端
+    setTimeout(() => {
+      if (apiKey) {
+        send({ type: 'set_api_key', payload: { apiKey } });
+      }
+    }, 500);
+
     if (source === 'mic') {
       startSpeech((text, isFinal) => {
         send({

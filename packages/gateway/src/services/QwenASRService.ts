@@ -1,14 +1,15 @@
 import WebSocket from 'ws';
 
 /**
- * 通义千问 Paraformer 实时 ASR 服务
- * 维护 WS 长连接，解析 Sentence 事件，检测回溯修正
+ * 通义千问 Qwen-LiveTranslate 实时翻译服务
+ * 直接将音频翻译为目标语言，无需分 ASR + 翻译两步
  */
 
 interface ASROptions {
   apiKey: string;
   model?: string;
-  sampleRate?: number;
+  targetLang?: string;
+  voice?: string;
   onEvent: (event: InternalASREvent) => void;
 }
 
@@ -20,120 +21,124 @@ export interface InternalASREvent {
   end_ms: number;
 }
 
-interface QwenASRSentence {
-  begin_time: number;
-  end_time: number;
-  text: string;
-}
-
 export function createQwenASRSession(options: ASROptions): {
   sendAudio: (pcmBase64: string) => void;
   close: () => void;
 } {
-  const { apiKey, model = 'paraformer-realtime-v2', sampleRate = 16000, onEvent } = options;
+  const {
+    apiKey,
+    model = 'qwen3.5-livetranslate-flash-realtime',
+    targetLang = 'zh',
+    voice = 'Cherry',
+    onEvent,
+  } = options;
 
-  const ws = new WebSocket('wss://dashscope.aliyuncs.com/api-ws/v1/inference', {
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-  });
+  const ws = new WebSocket(
+    `wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=${model}`,
+    {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    }
+  );
 
-  let taskId = '';
   let isReady = false;
   let windowId = 0;
-  let lastSentenceEndTime = 0;
   const pendingChunks: string[] = [];
 
   ws.on('open', () => {
-    console.log('[ASR] WebSocket connected to DashScope');
-    taskId = `asr-${Date.now()}`;
-    ws.send(JSON.stringify({
-      header: {
-        action: 'run-task',
-        task_id: taskId,
-        streaming: 'duplex',
-      },
-      payload: {
-        task_group: 'audio',
-        task: 'asr',
-        function: 'recognition',
-        model,
-        parameters: {
-          sample_rate: sampleRate,
-          format: 'pcm',
-        },
-      },
-    }));
+    console.log('[LiveTranslate] WebSocket connected');
   });
 
   ws.on('message', (data) => {
     if (Buffer.isBuffer(data)) {
-      console.log('[ASR] Received binary frame, size:', data.length);
+      // 音频二进制帧（TTS 输出），暂不处理
       return;
     }
 
     try {
       const msg = JSON.parse(data.toString());
-      console.log('[ASR] Received event:', msg.header?.event ?? msg.type ?? 'unknown', JSON.stringify(msg).slice(0, 200));
+      const type = msg.type ?? 'unknown';
 
-      if (msg.header?.event === 'task-started') {
-        console.log('[ASR] Task started');
+      if (type === 'session.created') {
+        console.log('[LiveTranslate] Session created, configuring...');
+        // 配置会话：输出文本 + 音频，目标语言中文
+        ws.send(JSON.stringify({
+          type: 'session.update',
+          output_modalities: ['text', 'audio'],
+          voice,
+          input_audio_transcription_model: 'qwen3-asr-flash-realtime',
+          translation_params: {
+            language: targetLang,
+          },
+        }));
+      }
+
+      if (type === 'session.updated') {
+        console.log('[LiveTranslate] Session configured, ready');
         isReady = true;
+        // 发送缓存的音频
         for (const chunk of pendingChunks) {
           sendChunk(chunk);
         }
         pendingChunks.length = 0;
       }
 
-      if (msg.header?.event === 'result-generated') {
-        const sentences: QwenASRSentence[] = msg.payload?.result?.sentences ?? [];
-        for (const sentence of sentences) {
-          const { begin_time, end_time, text } = sentence;
-          if (!text) continue;
-
-          // 修正检测：begin_time < lastSentenceEndTime 说明发生了回溯修正
-          if (begin_time < lastSentenceEndTime) {
-            console.log(`[ASR] Correction detected: "${text}" (${begin_time}ms < ${lastSentenceEndTime}ms)`);
-            onEvent({
-              type: 'CORRECT',
-              window_id: windowId++,
-              text,
-              start_ms: begin_time,
-              end_ms: end_time,
-            });
-          } else {
-            // 正常顺延
-            const isFinal = end_time > lastSentenceEndTime && msg.header?.event === 'task-finished';
-            onEvent({
-              type: isFinal ? 'FINAL' : 'CHUNK',
-              window_id: windowId++,
-              text,
-              start_ms: begin_time,
-              end_ms: end_time,
-            });
-          }
-
-          lastSentenceEndTime = Math.max(lastSentenceEndTime, end_time);
+      // 翻译文本输出
+      if (type === 'response.text.delta') {
+        const text = msg.delta ?? '';
+        if (text) {
+          onEvent({
+            type: 'CHUNK',
+            window_id: windowId++,
+            text,
+            start_ms: windowId * 400,
+            end_ms: (windowId + 1) * 400,
+          });
         }
       }
 
-      if (msg.header?.event === 'task-finished') {
-        console.log('[ASR] Task finished');
+      if (type === 'response.text.done') {
+        const text = msg.transcript ?? '';
+        if (text) {
+          onEvent({
+            type: 'FINAL',
+            window_id: windowId++,
+            text,
+            start_ms: windowId * 400,
+            end_ms: (windowId + 1) * 400,
+          });
+        }
+      }
+
+      // 原文识别输出（如果启用了 input_audio_transcription_model）
+      if (type === 'conversation.item.input_audio_transcription.completed') {
+        const transcript = msg.transcript ?? '';
+        console.log('[LiveTranslate] ASR原文:', transcript);
+      }
+
+      if (type === 'session.finished') {
+        console.log('[LiveTranslate] Session finished');
         onEvent({
           type: 'FINAL',
           window_id: windowId++,
           text: '',
-          start_ms: lastSentenceEndTime,
-          end_ms: lastSentenceEndTime,
+          start_ms: windowId * 400,
+          end_ms: (windowId + 1) * 400,
         });
       }
+
+      // 错误处理
+      if (type === 'error') {
+        console.error('[LiveTranslate] Error:', JSON.stringify(msg));
+      }
     } catch {
-      // 忽略
+      // 忽略解析错误
     }
   });
 
   ws.on('error', (err) => {
-    console.error('[ASR] WebSocket error:', err.message);
+    console.error('[LiveTranslate] WebSocket error:', err.message);
   });
 
   function sendChunk(base64: string) {
@@ -141,19 +146,20 @@ export function createQwenASRSession(options: ASROptions): {
       pendingChunks.push(base64);
       return;
     }
-    const buffer = Buffer.from(base64, 'base64');
-    ws.send(buffer);
+    // 发送音频数据
+    ws.send(JSON.stringify({
+      type: 'input_audio_buffer.append',
+      audio: base64,
+    }));
   }
 
   function close() {
     if (ws.readyState === WebSocket.OPEN) {
+      // 结束会话
       ws.send(JSON.stringify({
-        header: {
-          action: 'stop-task',
-          task_id: taskId,
-        },
+        type: 'session.finish',
       }));
-      ws.close();
+      setTimeout(() => ws.close(), 2000);
     }
   }
 

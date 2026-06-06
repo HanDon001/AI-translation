@@ -15,7 +15,8 @@
     "fastify": "^4.25.0",
     "@fastify/websocket": "^8.3.1",
     "@fastify/http-proxy": "^9.4.0",
-    "@fastify/cors": "^8.5.0"
+    "@fastify/cors": "^8.5.0",
+    "ws": "^8.16.0"
   },
   "devDependencies": {
     "tsx": "^4.7.0",

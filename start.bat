@@ -7,6 +7,15 @@ echo   LiveTranslate Platform - One Click Start
 echo ========================================
 echo.
 
+echo [0/6] Freeing ports...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3000 ^| findstr LISTENING') do taskkill /F /PID %%a >nul 2>&1
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3001 ^| findstr LISTENING') do taskkill /F /PID %%a >nul 2>&1
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3002 ^| findstr LISTENING') do taskkill /F /PID %%a >nul 2>&1
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :5173 ^| findstr LISTENING') do taskkill /F /PID %%a >nul 2>&1
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :8765 ^| findstr LISTENING') do taskkill /F /PID %%a >nul 2>&1
+echo [OK] Ports freed
+
+echo.
 echo [1/6] Installing dependencies...
 call pnpm install --no-frozen-lockfile
 if %errorlevel% neq 0 (
@@ -38,9 +47,7 @@ timeout /t 3 /nobreak >nul
 
 echo.
 echo [6/6] Starting Desktop Lyrics (port 8765)...
-cd components\desktop-lyrics
-start "DesktopLyrics" python lyrics_win32.py
-cd ..\..
+cscript //nologo start-lyrics.vbs
 
 echo.
 echo ========================================
@@ -63,6 +70,6 @@ taskkill /FI "WINDOWTITLE eq Gateway*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Frontend*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq ASRService*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq TranslateService*" /F >nul 2>&1
-taskkill /FI "WINDOWTITLE eq DesktopLyrics*" /F >nul 2>&1
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :8765 ^| findstr LISTENING') do taskkill /F /PID %%a >nul 2>&1
 echo Done!
 pause

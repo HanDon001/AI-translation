@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../common/common-core" },
+    { "path": "../../common/common-web" },
+    { "path": "../../common/common-security" }
+  ]
+}

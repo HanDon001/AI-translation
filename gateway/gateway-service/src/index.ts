@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import cors from '@fastify/cors';
+import WebSocket from 'ws';
 
 const app = Fastify({ logger: true });
 
@@ -18,23 +19,27 @@ app.get('/ws', { websocket: true }, (socket) => {
   // 转发到 ASR 服务
   const asrWs = new WebSocket('ws://localhost:3001/ws/asr');
 
-  asrWs.onopen = () => {
+  asrWs.on('open', () => {
     console.log(`[Gateway] Connected to ASR service for client: ${clientId}`);
-  };
+  });
 
-  asrWs.onmessage = (event) => {
+  asrWs.on('message', (data) => {
     // 将 ASR 服务的响应转发给客户端
     if (socket.readyState === 1) {
-      socket.send(event.data);
+      socket.send(data.toString());
     }
-  };
+  });
 
-  asrWs.onclose = () => {
+  asrWs.on('close', () => {
     console.log(`[Gateway] ASR service disconnected for client: ${clientId}`);
     if (socket.readyState === 1) {
       socket.close();
     }
-  };
+  });
+
+  asrWs.on('error', (err) => {
+    console.error(`[Gateway] ASR WebSocket error:`, err.message);
+  });
 
   // 将客户端消息转发到 ASR 服务
   socket.on('message', (data) => {

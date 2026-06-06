@@ -9,6 +9,8 @@
 ├── pnpm-workspace.yaml                             # pnpm 多层级工作区配置
 ├── pnpm-lock.yaml                                  # 依赖锁文件
 ├── tsconfig.base.json                              # TypeScript 基础配置
+├── .editorconfig                                   # 编辑器代码风格统一
+├── .gitignore                                      # Git 忽略规则
 ├── start.bat                                       # Windows 一键启动
 ├── start.sh                                        # Linux/Mac 一键启动
 ├── README.md                                       # 项目说明文档

@@ -7,4 +7,3 @@ packages:
   - 'gateway/*'
   - 'auth/*'
   - 'components/*'
-  - 'packages/*'

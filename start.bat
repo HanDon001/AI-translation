@@ -7,7 +7,7 @@ echo   LiveTranslate Platform - One Click Start
 echo ========================================
 echo.
 
-echo [1/4] Installing dependencies...
+echo [1/5] Installing dependencies...
 call pnpm install --no-frozen-lockfile
 if %errorlevel% neq 0 (
     echo [ERROR] Install failed!
@@ -17,27 +17,35 @@ if %errorlevel% neq 0 (
 echo [OK] Dependencies installed
 
 echo.
-echo [2/4] Starting Frontend (port 5173)...
+echo [2/5] Starting Frontend (port 5173)...
 start "Frontend" pnpm.cmd --filter livetranslate-web-console dev
 timeout /t 3 /nobreak >nul
 
 echo.
-echo [3/4] Starting ASR Service (port 3001)...
+echo [3/5] Starting ASR Service (port 3001)...
 start "ASRService" pnpm.cmd --filter @livetranslate/asr-server dev
 timeout /t 2 /nobreak >nul
 
 echo.
-echo [4/4] Starting Translate Service (port 3002)...
+echo [4/5] Starting Translate Service (port 3002)...
 start "TranslateService" pnpm.cmd --filter @livetranslate/translate-server dev
+timeout /t 2 /nobreak >nul
+
+echo.
+echo [5/5] Starting Desktop Lyrics (port 8765)...
+cd components\desktop-lyrics
+start "DesktopLyrics" python lyrics_win32.py
+cd ..\..
 
 echo.
 echo ========================================
 echo   All services started!
 echo.
-echo   Frontend:    http://localhost:5173
-echo   Landing:     http://localhost:5173/landing.html
-echo   ASR:         ws://localhost:3001/ws/asr
-echo   Translate:   http://localhost:3002
+echo   Frontend:      http://localhost:5173
+echo   Landing:       http://localhost:5173/landing.html
+echo   ASR:           ws://localhost:3001/ws/asr
+echo   Translate:     http://localhost:3002
+echo   Desktop:       http://localhost:8765
 echo.
 echo   Press any key to stop all services...
 echo ========================================
@@ -48,5 +56,6 @@ echo Stopping services...
 taskkill /FI "WINDOWTITLE eq Frontend*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq ASRService*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq TranslateService*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq DesktopLyrics*" /F >nul 2>&1
 echo Done!
 pause

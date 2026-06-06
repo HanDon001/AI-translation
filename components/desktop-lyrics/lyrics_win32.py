@@ -403,6 +403,8 @@ class DesktopLyrics:
                 return
 
             self._network.start()
+            self._show()  # 启动时自动显示窗口
+            self._render_and_update()  # 首次渲染
             self._print_ready()
 
             # 消息循环（主线程）

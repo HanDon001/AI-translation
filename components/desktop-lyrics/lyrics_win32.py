@@ -207,6 +207,7 @@ _GDIPLUS_FUNCS = {
     "GdipCreateFont": [ctypes.c_void_p, ctypes.c_float, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p)],
     "GdipDeleteFont": [ctypes.c_void_p],
     "GdipDrawString": [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_int, ctypes.c_void_p, ctypes.POINTER(RectF), ctypes.c_void_p, ctypes.c_void_p],
+    "GdipFillRectangle": [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float],
     "GdipCreateStringFormat": [ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p)],
     "GdipDeleteStringFormat": [ctypes.c_void_p],
     "GdipSetStringFormatAlign": [ctypes.c_void_p, ctypes.c_int],
@@ -403,8 +404,10 @@ class DesktopLyrics:
                 return
 
             self._network.start()
-            self._show()  # 启动时自动显示窗口
-            self._render_and_update()  # 首次渲染
+            log.info("首次渲染...")
+            self._render_and_update()  # 先渲染内容
+            log.info("显示窗口...")
+            self._show()  # 再显示窗口
             self._print_ready()
 
             # 消息循环（主线程）
@@ -665,6 +668,10 @@ class DesktopLyrics:
             gdiplus.GdipSetSmoothingMode(graphics, SmoothingModeAntiAlias)
             gdiplus.GdipSetTextRenderingHint(graphics, TextRenderingHintClearTypeGridFit)
 
+            # 半透明背景（让字幕更醒目）
+            bg_brush = self._brush_pool.get(180, 0, 0, 0)
+            gdiplus.GdipFillRectangle(graphics, bg_brush, 0.0, 0.0, float(Config.WIDTH), float(Config.HEIGHT))
+
             cr, cg, cb = Config.COLORS[self._color_idx % len(Config.COLORS)]
 
             # 文字阴影（从池获取）
@@ -708,12 +715,14 @@ class DesktopLyrics:
         pt_dst = wintypes.POINT(self._pos_x, self._pos_y)
         size = wintypes.SIZE(Config.WIDTH, Config.HEIGHT)
 
-        user32.UpdateLayeredWindow(
+        result = user32.UpdateLayeredWindow(
             self._hwnd, hdc,
             ctypes.byref(pt_dst), ctypes.byref(size),
             hdc_mem, ctypes.byref(pt_src),
             0, ctypes.byref(blend), 2,
         )
+        if not result:
+            log.error("UpdateLayeredWindow 失败, error=%d", kernel32.GetLastError())
 
         gdi32.SelectObject(hdc_mem, old_bmp)
         gdi32.DeleteDC(hdc_mem)

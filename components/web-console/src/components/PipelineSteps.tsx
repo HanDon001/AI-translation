@@ -1,5 +1,4 @@
 import type { StepInfo } from '../hooks/usePipelineSteps';
-import styles from '../styles/console.module.css';
 
 interface PipelineStepsProps {
   steps: StepInfo[];
@@ -8,21 +7,21 @@ interface PipelineStepsProps {
 export function PipelineSteps({ steps }: PipelineStepsProps) {
   return (
     <>
-      <div className={styles.panelSection} style={{ paddingBottom: 6 }}>
-        <div className={styles.panelSectionTitle}>
+      <div className="panel-section" style={{ paddingBottom: 6 }}>
+        <div className="panel-section-title">
           <i className="fa-solid fa-route" /> 处理管道
         </div>
       </div>
-      <div className={styles.steps}>
+      <div className="steps">
         {steps.map((step) => (
-          <div key={step.id} className={`${styles.step} ${styles[step.state]}`}>
-            <div className={styles.stepIcon}>
+          <div key={step.id} className={`step ${step.state}`}>
+            <div className="step-icon">
               <i className={`fa-solid ${step.icon}`} />
             </div>
-            <div className={styles.stepInfo}>
-              <div className={styles.stepName}>{step.name}</div>
-              <div className={styles.stepDetail}>{step.detail}</div>
-              {step.latency && <div className={styles.latency}>{step.latency}</div>}
+            <div className="step-info">
+              <div className="step-name">{step.name}</div>
+              <div className="step-detail">{step.detail}</div>
+              {step.latency && <div className="latency">{step.latency}</div>}
             </div>
           </div>
         ))}

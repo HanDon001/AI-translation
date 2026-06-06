@@ -1,5 +1,3 @@
-import styles from '../styles/console.module.css';
-
 export type ToastType = 'ok' | 'err' | 'info';
 
 interface ToastItem {
@@ -20,9 +18,9 @@ const ICONS: Record<ToastType, string> = {
 
 export function ToastContainer({ toasts }: ToastContainerProps) {
   return (
-    <div className={styles.toastContainer}>
+    <div className="toast-container">
       {toasts.map((t) => (
-        <div key={t.id} className={`${styles.toast} ${styles[t.type]}`}>
+        <div key={t.id} className={`toast ${t.type}`}>
           <i className={`fa-solid ${ICONS[t.type] || ICONS.info}`} />
           <span>{t.msg}</span>
         </div>

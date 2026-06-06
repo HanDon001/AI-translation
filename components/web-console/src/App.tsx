@@ -19,8 +19,7 @@ import { useDemoMode } from './hooks/useDemoMode';
 import { useErrorHandler } from './hooks/useErrorHandler';
 import { LANG_MAP } from './config/constants';
 import { API_ENDPOINTS } from './config/api';
-import './styles/globals.css';
-import styles from './styles/console.module.css';
+import './styles/console.css';
 
 export default function App() {
   /* ---- 配置状态 ---- */
@@ -106,7 +105,7 @@ export default function App() {
       }
     } catch (e: unknown) {
       if (!handleTranslationError(e, text)) return;
-      setLiveTgt(`翻译失败`);
+      setLiveTgt('翻译失败');
       setLiveLabel('错误');
       addResult(text, null);
     } finally {
@@ -392,7 +391,7 @@ export default function App() {
   }, [stopTimer]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div className="console-shell" style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <Topbar
         mode={mode}
         srcLang={srcLang}
@@ -403,27 +402,27 @@ export default function App() {
         onTgtLangChange={handleTgtLangChange}
       />
 
-      <div className={styles.main}>
-        <aside className={styles.panelLeft}>
-          <div className={styles.panelSection}>
-            <div className={styles.panelSectionTitle}>
+      <div className="main">
+        <aside className="panel-left">
+          <div className="panel-section">
+            <div className="panel-section-title">
               <i className="fa-solid fa-sliders" /> 参数配置
             </div>
-            <div className={styles.ctrlRow}>
-              <span className={styles.ctrlLabel}>API Key</span>
+            <div className="ctrl-row">
+              <span className="ctrl-label">API Key</span>
               <input
                 type="password"
-                className={styles.ctrlSelect}
+                className="ctrl-select"
                 placeholder="DashScope API Key"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 style={{ width: 140, fontSize: 11 }}
               />
             </div>
-            <div className={styles.ctrlRow}>
-              <span className={styles.ctrlLabel}>模型状态</span>
-              <div className={`${styles.statusDot} ${connectionStatus === 'connected' ? styles.connected : connectionStatus === 'error' ? styles.error : ''}`} style={{ fontSize: 10, padding: '3px 10px' }}>
-                <div className={styles.dot} />
+            <div className="ctrl-row">
+              <span className="ctrl-label">模型状态</span>
+              <div className={`status-dot ${connectionStatus === 'connected' ? 'connected' : connectionStatus === 'error' ? 'error' : ''}`} style={{ fontSize: 10, padding: '3px 10px' }}>
+                <div className="dot" />
                 <span>
                   {connectionStatus === 'disconnected' && '未连接'}
                   {connectionStatus === 'connecting' && '连接中...'}
@@ -432,9 +431,9 @@ export default function App() {
                 </span>
               </div>
             </div>
-            <div className={styles.ctrlRow}>
-              <span className={styles.ctrlLabel}>源语言</span>
-              <select className={styles.ctrlSelect} value={srcLang} onChange={(e) => handleSrcLangChange(e.target.value)}>
+            <div className="ctrl-row">
+              <span className="ctrl-label">源语言</span>
+              <select className="ctrl-select" value={srcLang} onChange={(e) => handleSrcLangChange(e.target.value)}>
                 <option value="en-US">English</option>
                 <option value="zh-CN">中文</option>
                 <option value="ja-JP">日本語</option>
@@ -445,9 +444,9 @@ export default function App() {
                 <option value="ru-RU">Русский</option>
               </select>
             </div>
-            <div className={styles.ctrlRow}>
-              <span className={styles.ctrlLabel}>目标语言</span>
-              <select className={styles.ctrlSelect} value={tgtLang} onChange={(e) => handleTgtLangChange(e.target.value)}>
+            <div className="ctrl-row">
+              <span className="ctrl-label">目标语言</span>
+              <select className="ctrl-select" value={tgtLang} onChange={(e) => handleTgtLangChange(e.target.value)}>
                 <option value="zh">中文</option>
                 <option value="en">English</option>
                 <option value="ja">日本語</option>
@@ -459,7 +458,7 @@ export default function App() {
               </select>
             </div>
             <div style={{ marginTop: 14 }}>
-              <button className={`${styles.btnStart} ${isRunning ? styles.running : styles.idle}`} onClick={handleToggle}>
+              <button className={`btn-start ${isRunning ? 'running' : 'idle'}`} onClick={handleToggle}>
                 {isRunning ? (
                   <><i className="fa-solid fa-stop" /><span>停止翻译</span></>
                 ) : (
@@ -469,7 +468,7 @@ export default function App() {
             </div>
             <div style={{ marginTop: 8 }}>
               <button
-                className={styles.btnDesktopSubtitles}
+                className="btn-desktop-subtitles"
                 onClick={async () => {
                   try {
                     const resp = await fetch(`${API_ENDPOINTS.DESKTOP_LYRICS}/toggle`);
@@ -485,7 +484,7 @@ export default function App() {
             </div>
             <div style={{ marginTop: 8 }}>
               <button
-                className={styles.btnDesktopSubtitles}
+                className="btn-desktop-subtitles"
                 onClick={() => {
                   const log = translationLog.getLog();
                   if (log.length === 0) {
@@ -511,7 +510,7 @@ export default function App() {
           <PipelineSteps steps={steps} />
         </aside>
 
-        <section className={styles.panelCenter}>
+        <section className="panel-center">
           <ResultsPanel
             results={results}
             sentenceCount={sentenceCount}
@@ -526,7 +525,7 @@ export default function App() {
           <Waveform isActive={isRunning} analyser={analyserRef.current} waveData={waveDataRef.current} />
         </section>
 
-        <aside className={styles.panelRight}>
+        <aside className="panel-right">
           <LogPanel logs={logs} onClear={clearLogs} />
         </aside>
       </div>
@@ -534,33 +533,33 @@ export default function App() {
       <ToastContainer toasts={toasts} />
 
       {showApiKeyModal && (
-        <div className={styles.modalOverlay} onClick={() => setShowApiKeyModal(false)}>
-          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
+        <div className="modal-overlay" onClick={() => setShowApiKeyModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
               <h3><i className="fa-solid fa-key" /> 输入 API Key</h3>
-              <button className={styles.modalClose} onClick={() => setShowApiKeyModal(false)}>
+              <button className="modal-close" onClick={() => setShowApiKeyModal(false)}>
                 <i className="fa-solid fa-xmark" />
               </button>
             </div>
-            <div className={styles.modalBody}>
-              <p className={styles.modalDesc}>请输入 DashScope API Key 以使用实时翻译功能</p>
+            <div className="modal-body">
+              <p className="modal-desc">请输入 DashScope API Key 以使用实时翻译功能</p>
               <input
                 type="password"
-                className={styles.modalInput}
+                className="modal-input"
                 placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
                 value={tempApiKey}
                 onChange={(e) => setTempApiKey(e.target.value)}
                 autoFocus
               />
-              <p className={styles.modalHint}>
+              <p className="modal-hint">
                 <i className="fa-solid fa-circle-info" />
                 API Key 可在阿里云百炼平台获取
               </p>
             </div>
-            <div className={styles.modalFooter}>
-              <button className={`${styles.modalBtn} ${styles.cancel}`} onClick={() => setShowApiKeyModal(false)}>取消</button>
+            <div className="modal-footer">
+              <button className="modal-btn cancel" onClick={() => setShowApiKeyModal(false)}>取消</button>
               <button
-                className={`${styles.modalBtn} ${styles.confirm}`}
+                className="modal-btn confirm"
                 onClick={() => {
                   if (tempApiKey.trim()) {
                     const key = tempApiKey.trim();

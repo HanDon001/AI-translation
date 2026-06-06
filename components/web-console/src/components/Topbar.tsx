@@ -1,5 +1,3 @@
-import styles from '../styles/console.module.css';
-
 interface TopbarProps {
   mode: 'mic' | 'tab';
   srcLang: string;
@@ -24,27 +22,27 @@ export function Topbar({
   const status = STATUS_MAP[connectionStatus];
 
   return (
-    <header className={styles.topbar}>
-      <div className={styles.topbarLeft}>
-        <div className={styles.topbarLogo}>LT</div>
-        <div className={styles.topbarTitle}>
+    <header className="topbar">
+      <div className="topbar-left">
+        <div className="topbar-logo">LT</div>
+        <div className="topbar-title">
           LiveTranslate Console
           <span>Qwen-LiveTranslate</span>
         </div>
       </div>
 
-      <div className={styles.topbarCenter}>
-        <div className={styles.modeSwitch}>
-          <button className={`${styles.modeBtn} ${mode === 'mic' ? styles.active : ''}`} onClick={() => onModeChange('mic')}>
+      <div className="topbar-center">
+        <div className="mode-switch">
+          <button className={`mode-btn ${mode === 'mic' ? 'active' : ''}`} onClick={() => onModeChange('mic')}>
             <i className="fa-solid fa-microphone" /> 麦克风
           </button>
-          <button className={`${styles.modeBtn} ${mode === 'tab' ? styles.active : ''}`} onClick={() => onModeChange('tab')}>
+          <button className={`mode-btn ${mode === 'tab' ? 'active' : ''}`} onClick={() => onModeChange('tab')}>
             <i className="fa-solid fa-desktop" /> 标签页
           </button>
         </div>
 
-        <div className={styles.langGroup}>
-          <select className={styles.langSelect} value={srcLang} onChange={(e) => onSrcLangChange(e.target.value)}>
+        <div className="lang-group">
+          <select className="lang-select" value={srcLang} onChange={(e) => onSrcLangChange(e.target.value)}>
             <option value="en-US">English</option>
             <option value="zh-CN">中文</option>
             <option value="ja-JP">日本語</option>
@@ -54,8 +52,8 @@ export function Topbar({
             <option value="es-ES">Español</option>
             <option value="ru-RU">Русский</option>
           </select>
-          <span className={styles.langArrow}><i className="fa-solid fa-arrow-right" /></span>
-          <select className={styles.langSelect} value={tgtLang} onChange={(e) => onTgtLangChange(e.target.value)}>
+          <span className="lang-arrow"><i className="fa-solid fa-arrow-right" /></span>
+          <select className="lang-select" value={tgtLang} onChange={(e) => onTgtLangChange(e.target.value)}>
             <option value="zh">中文</option>
             <option value="en">English</option>
             <option value="ja">日本語</option>
@@ -67,14 +65,14 @@ export function Topbar({
           </select>
         </div>
 
-        <div className={`${styles.statusDot} ${status.class ? styles[status.class] : ''}`}>
-          <div className={styles.dot} />
+        <div className={`status-dot ${status.class}`}>
+          <div className="dot" />
           <span>{status.text}</span>
         </div>
       </div>
 
-      <div className={styles.topbarRight}>
-        <a href="/landing.html" className={styles.topbarBack}>
+      <div className="topbar-right">
+        <a href="/landing.html" className="topbar-back">
           <i className="fa-solid fa-arrow-left" /> 返回官网
         </a>
       </div>

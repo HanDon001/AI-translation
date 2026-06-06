@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import styles from '../styles/console.module.css';
 
 interface WaveformProps {
   isActive: boolean;
@@ -12,10 +11,12 @@ export function Waveform({ isActive, analyser, waveData }: WaveformProps) {
   const dataRef = useRef<Float32Array>(waveData || new Float32Array(128));
   const animRef = useRef<number>(0);
 
+  // 更新 waveData 引用
   useEffect(() => {
     if (waveData) dataRef.current = waveData;
   }, [waveData]);
 
+  // 绘制波形
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -46,6 +47,7 @@ export function Waveform({ isActive, analyser, waveData }: WaveformProps) {
         const amp = data[i] * (h * 0.38);
         const intensity = Math.abs(data[i]);
 
+        // 蓝色系渐变
         const r = Math.round(2 + intensity * 6);
         const g = Math.round(119 + intensity * 40);
         const b = Math.round(189 + intensity * 30);
@@ -67,17 +69,20 @@ export function Waveform({ isActive, analyser, waveData }: WaveformProps) {
     };
   }, []);
 
+  // 更新波形数据
   useEffect(() => {
     const data = dataRef.current;
     let raf: number;
 
     if (isActive && analyser) {
+      // 真实音频数据
       const bufferLength = analyser.fftSize;
       const dataArray = new Float32Array(bufferLength);
 
       const update = () => {
         analyser.getFloatTimeDomainData(dataArray);
 
+        // 降采样到 128
         const step = Math.floor(bufferLength / data.length);
         for (let i = 0; i < data.length; i++) {
           const target = dataArray[i * step] || 0;
@@ -88,6 +93,7 @@ export function Waveform({ isActive, analyser, waveData }: WaveformProps) {
       };
       raf = requestAnimationFrame(update);
     } else if (isActive) {
+      // 模拟动画
       const update = () => {
         for (let i = 0; i < data.length; i++) {
           const target =
@@ -100,6 +106,7 @@ export function Waveform({ isActive, analyser, waveData }: WaveformProps) {
       };
       raf = requestAnimationFrame(update);
     } else {
+      // 衰减
       const decay = () => {
         let allZero = true;
         for (let i = 0; i < data.length; i++) {
@@ -116,10 +123,10 @@ export function Waveform({ isActive, analyser, waveData }: WaveformProps) {
   }, [isActive, analyser]);
 
   return (
-    <div className={styles.waveformWrap}>
+    <div className="waveform-wrap">
       <canvas ref={canvasRef} />
-      <div className={`${styles.waveformLabel} ${isActive ? styles.active : ''}`}>
-        <div className={styles.liveDot} />
+      <div className={`waveform-label ${isActive ? 'active' : ''}`}>
+        <div className="live-dot" />
         <span>{isActive ? 'LIVE · 16000 Hz · PCM16' : 'IDLE · 0 Hz'}</span>
       </div>
     </div>

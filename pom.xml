@@ -148,17 +148,7 @@
             </dependency>
             <dependency>
                 <groupId>com.livetranslate</groupId>
-                <artifactId>common-web</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.livetranslate</groupId>
                 <artifactId>common-redis</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.livetranslate</groupId>
-                <artifactId>common-websocket</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -180,7 +170,6 @@
     </dependencyManagement>
 
     <modules>
-        <module>common</module>
         <module>services</module>
         <module>gateway</module>
         <module>auth</module>

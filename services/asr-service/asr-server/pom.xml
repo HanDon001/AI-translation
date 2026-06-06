@@ -15,25 +15,10 @@
     <description>ASR 服务实现</description>
 
     <dependencies>
-        <!-- 内部模块 -->
         <dependency>
             <groupId>com.livetranslate</groupId>
             <artifactId>asr-api</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.livetranslate</groupId>
-            <artifactId>common-web</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.livetranslate</groupId>
-            <artifactId>common-websocket</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.livetranslate</groupId>
-            <artifactId>common-redis</artifactId>
-        </dependency>
-
-        <!-- Spring Boot -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
@@ -42,27 +27,19 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-websocket</artifactId>
         </dependency>
-
-        <!-- DashScope WebSocket 客户端 -->
         <dependency>
             <groupId>org.java-websocket</groupId>
             <artifactId>Java-WebSocket</artifactId>
         </dependency>
-
-        <!-- JSON -->
         <dependency>
             <groupId>com.alibaba.fastjson2</groupId>
             <artifactId>fastjson2</artifactId>
         </dependency>
-
-        <!-- 工具 -->
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <scope>provided</scope>
         </dependency>
-
-        <!-- 测试 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

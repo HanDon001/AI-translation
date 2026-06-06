@@ -4,7 +4,6 @@ import com.alibaba.fastjson2.JSON;
 import com.livetranslate.asr.application.service.ASRApplicationService;
 import com.livetranslate.asr.domain.model.ASRSession;
 import com.livetranslate.asr.domain.model.RecognitionResult;
-import com.livetranslate.common.websocket.session.SessionManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -16,7 +15,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * ASR WebSocket 处理器
- * 对应原 TypeScript 的 wsHandler.ts
  */
 @Slf4j
 @Component
@@ -24,20 +22,16 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ASRWebSocketHandler extends TextWebSocketHandler {
 
     private final ASRApplicationService asrApplicationService;
-    private final SessionManager sessionManager;
-
     private final Map<String, ASRSession> asrSessions = new ConcurrentHashMap<>();
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-        sessionManager.add(session.getId(), session);
         log.info("ASR WebSocket 连接已建立: sessionId={}", session.getId());
     }
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
         String payload = message.getPayload();
-        log.debug("收到消息: sessionId={}, payload={}", session.getId(), payload);
 
         try {
             Map<String, Object> msg = JSON.parseObject(payload, Map.class);
@@ -58,7 +52,6 @@ public class ASRWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
-        sessionManager.remove(session.getId());
         ASRSession asrSession = asrSessions.remove(session.getId());
         if (asrSession != null) {
             asrApplicationService.closeSession(asrSession);

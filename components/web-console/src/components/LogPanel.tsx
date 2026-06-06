@@ -1,5 +1,6 @@
 import { useRef, useEffect } from 'react';
 import type { LogEntry } from '../hooks/useConsoleLog';
+import styles from '../styles/console.module.css';
 
 interface LogPanelProps {
   logs: LogEntry[];
@@ -25,20 +26,20 @@ export function LogPanel({ logs, onClear }: LogPanelProps) {
 
   return (
     <>
-      <div className="log-header">
+      <div className={styles.logHeader}>
         <h2><i className="fa-solid fa-terminal" /> 实时日志</h2>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <span className="log-count">{logs.length}</span>
-          <button className="log-clear" onClick={onClear}>清空</button>
+          <span className={styles.logCount}>{logs.length}</span>
+          <button className={styles.logClear} onClick={onClear}>清空</button>
         </div>
       </div>
-      <div className="log-list" ref={listRef}>
+      <div className={styles.logList} ref={listRef}>
         {logs.map((entry) => (
-          <div key={entry.id} className={`log-entry type-${entry.type}`}>
-            <span className="log-time">{entry.time}</span>
-            <span className="log-tag">{TAG_MAP[entry.type] || 'INFO'}</span>
+          <div key={entry.id} className={`${styles.logEntry} ${styles[`type-${entry.type}`]}`}>
+            <span className={styles.logTime}>{entry.time}</span>
+            <span className={styles.logTag}>{TAG_MAP[entry.type] || 'INFO'}</span>
             <span
-              className="log-msg"
+              className={styles.logMsg}
               dangerouslySetInnerHTML={{ __html: entry.msg }}
             />
           </div>

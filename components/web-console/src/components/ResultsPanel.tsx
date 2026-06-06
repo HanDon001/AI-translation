@@ -1,3 +1,5 @@
+import styles from '../styles/console.module.css';
+
 export interface TranslationResult {
   id: number;
   source: string;
@@ -25,49 +27,46 @@ export function ResultsPanel({
 }: ResultsPanelProps) {
   return (
     <>
-      <div className="results-header">
+      <div className={styles.resultsHeader}>
         <h2><i className="fa-solid fa-closed-captioning" /> 翻译结果</h2>
-        <div className="results-stats">
-          <span>句数 <span className="val">{sentenceCount}</span></span>
-          <span>平均延迟 <span className="val">{avgLatency}</span></span>
-          <span>已用时 <span className="val">{elapsedTime}</span></span>
+        <div className={styles.resultsStats}>
+          <span>句数 <span className={styles.val}>{sentenceCount}</span></span>
+          <span>平均延迟 <span className={styles.val}>{avgLatency}</span></span>
+          <span>已用时 <span className={styles.val}>{elapsedTime}</span></span>
         </div>
       </div>
 
-      <div className="results-list">
-        {/* 空状态 */}
+      <div className={styles.resultsList}>
         {!isRunning && results.length === 0 && (
-          <div className="result-empty">
+          <div className={styles.resultEmpty}>
             <i className="fa-solid fa-satellite-dish" />
             <p>点击「开始翻译」启动实时翻译</p>
           </div>
         )}
 
-        {/* 实时卡片 */}
         {isRunning && (
-          <div className={`result-card ${liveSrc ? 'is-streaming' : ''}`}>
-            <div className="result-meta">
-              <span className="idx">LIVE</span>
+          <div className={`${styles.resultCard} ${liveSrc ? styles.isStreaming : ''}`}>
+            <div className={styles.resultMeta}>
+              <span className={styles.idx}>LIVE</span>
               <span>{liveLabel}</span>
             </div>
-            <div className="result-source">{liveSrc || '等待语音输入...'}</div>
-            <div className="result-divider" />
-            <div className={`result-target ${isTranslating ? 'translating' : ''}`}>
+            <div className={styles.resultSource}>{liveSrc || '等待语音输入...'}</div>
+            <div className={styles.resultDivider} />
+            <div className={`${styles.resultTarget} ${isTranslating ? styles.translating : ''}`}>
               {liveTgt || ''}
             </div>
           </div>
         )}
 
-        {/* 之前的结果 */}
         {results.map((r) => (
-          <div key={r.id} className="result-card">
-            <div className="result-meta">
-              <span className="idx">#{String(r.id).padStart(2, '0')}</span>
+          <div key={r.id} className={styles.resultCard}>
+            <div className={styles.resultMeta}>
+              <span className={styles.idx}>#{String(r.id).padStart(2, '0')}</span>
               <span>{r.time}</span>
-              {r.latency != null && <span className="lat">{r.latency}ms</span>}
+              {r.latency != null && <span className={styles.lat}>{r.latency}ms</span>}
             </div>
-            <div className="result-source">{r.source}</div>
-            <div className="result-target">{r.target}</div>
+            <div className={styles.resultSource}>{r.source}</div>
+            <div className={styles.resultTarget}>{r.target}</div>
           </div>
         ))}
       </div>

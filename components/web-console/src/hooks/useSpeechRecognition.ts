@@ -8,7 +8,11 @@ export function useSpeechRecognition() {
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const [isListening, setIsListening] = useState(false);
 
-  const start = useCallback((onResult: (text: string, isFinal: boolean) => void, lang = 'en-US') => {
+  const start = useCallback((
+    onResult: (text: string, isFinal: boolean) => void,
+    lang = 'en-US',
+    onNetworkError?: () => void,
+  ) => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       throw new Error('此浏览器不支持语音识别，请使用 Chrome');
@@ -30,14 +34,20 @@ export function useSpeechRecognition() {
 
     recognition.onerror = (event) => {
       console.error('[SpeechRecognition] Error:', event.error);
+      if (event.error === 'network') {
+        // 网络错误：无法连接 Google 语音服务，停止重试，通知调用方降级
+        console.warn('[SpeechRecognition] Network error, falling back to demo mode');
+        recognitionRef.current = null;
+        setIsListening(false);
+        onNetworkError?.();
+        return;
+      }
       if (event.error === 'no-speech') {
-        // 无语音，静默重启
         try { recognition.start(); } catch {}
       }
     };
 
     recognition.onend = () => {
-      // 自动重启（保持持续监听）
       if (recognitionRef.current) {
         try { recognition.start(); } catch {}
       }
@@ -50,7 +60,7 @@ export function useSpeechRecognition() {
 
   const stop = useCallback(() => {
     if (recognitionRef.current) {
-      recognitionRef.current.onend = null; // 阻止自动重启
+      recognitionRef.current.onend = null;
       recognitionRef.current.stop();
       recognitionRef.current = null;
     }

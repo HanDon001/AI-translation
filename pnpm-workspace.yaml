@@ -1,2 +1,10 @@
 packages:
+  - 'common/*'
+  - 'services/*/asr-api'
+  - 'services/*/asr-server'
+  - 'services/*/translate-api'
+  - 'services/*/translate-server'
+  - 'gateway/*'
+  - 'auth/*'
+  - 'components/*'
   - 'packages/*'

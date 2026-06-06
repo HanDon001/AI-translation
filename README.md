@@ -1,222 +1,170 @@
-# LiveTranslate Platform
+第一步：拆分 common/ 公共基础模块
+目标：将原 packages/shared/ 的“大杂烩”拆分为 5 个职责单一的包。
 
-> 实时同声传译微服务平台 - 双架构（Java Spring Cloud + Node.js）
+bash
 
-## 项目结构
+# 1. 删除原来的 shared
+rm -rf packages/shared
 
-```
-同声传译助手/
-├── pom.xml                          # Java 根 POM
-├── package.json                     # Node.js 根 package.json
-├── pnpm-workspace.yaml              # pnpm 工作区配置
-├── tsconfig.base.json               # TypeScript 基础配置
-├── start.bat                        # Windows 一键启动
-├── start.sh                         # Linux/Mac 一键启动
-├── README.md                        # 本文档
-│
-├── packages/                        # Node.js 项目
-│   ├── web/                         # React 前端控制台
-│   │   ├── src/
-│   │   │   ├── App.tsx              # 主组件
-│   │   │   ├── components/          # UI 组件
-│   │   │   ├── hooks/               # 自定义 Hook
-│   │   │   ├── styles/              # 样式文件
-│   │   │   └── workers/             # AudioWorklet
-│   │   ├── index.html               # 控制台入口
-│   │   ├── landing.html             # SaaS 官网
-│   │   ├── vite.config.ts           # Vite 配置
-│   │   └── package.json
-│   │
-│   ├── gateway/                     # Node.js 网关
-│   │   └── src/
-│   │       ├── index.ts             # 服务入口
-│   │       ├── handlers/            # WebSocket 处理
-│   │       ├── services/            # 业务服务
-│   │       └── core/                # 核心算法
-│   │
-│   ├── shared/                      # 共享类型和工具
-│   │   └── src/
-│   │       ├── types/               # TypeScript 类型
-│   │       ├── guards/              # 类型守卫
-│   │       └── constants/           # 常量定义
-│   │
-│   ├── asr-engine/                  # ASR 引擎
-│   ├── translator/                  # 翻译器
-│   └── desktop-lyrics/              # 桌面字幕（Python）
-│       ├── lyrics_win32.py          # Win32 + GDI+ 实现
-│       └── requirements.txt
-│
-├── common/                          # Java 公共模块
-│   ├── common-core/                 # 异常、常量、工具
-│   ├── common-web/                  # 统一响应、异常处理
-│   ├── common-redis/                # 会话缓存
-│   ├── common-websocket/            # WebSocket 管理
-│   └── common-security/             # API Key 认证
-│
-├── services/                        # Java 业务服务
-│   ├── asr-service/                 # ASR 语音识别
-│   │   ├── asr-api/                 # DTO、Feign、枚举
-│   │   └── asr-server/              # DDD 四层架构
-│   └── translate-service/           # 翻译服务
-│       ├── translate-api/
-│       └── translate-server/
-│
-├── gateway/                         # Java API 网关
-│   └── gateway-service/             # Spring Cloud Gateway
-│
-├── auth/                            # Java 认证中心
-│   └── auth-service/
-│
-├── config/                          # 配置文件
-│   ├── tsconfig/                    # TypeScript 配置
-│   └── nacos/                       # Nacos 配置
-│       ├── DEV/
-│       └── PROD/
-│
-├── docker/                          # Docker 构建
-│   ├── docker-compose.yml
-│   └── Dockerfile
-│
-├── docs/                            # 文档
-│   ├── architecture.md              # 架构文档
-│   ├── api-design/                  # API 设计
-│   └── decisions/                   # 架构决策
-│
-└── scripts/                         # CI/CD
-    └── ci/Jenkinsfile
-```
+# 2. 创建细粒度 common 模块
+mkdir -p common/common-core/src
+mkdir -p common/common-web/src
+mkdir -p common/common-websocket/src
+mkdir -p common/common-redis/src
+mkdir -p common/common-security/src
+迁移映射关系：
 
-## 技术栈
+原 packages/shared 内容
+迁移到新模块
+constants.ts	common/common-core/src/constants.ts
+types/transport.ts, types/events.ts	common/common-core/src/types/
+guards/eventGuards.ts	common/common-core/src/guards/
+（新增）统一错误码、业务异常类	common/common-core/src/exceptions/
+（新增）统一响应体封装 Result<T>	common/common-web/src/Result.ts
+（新增）Fastify 全局错误处理、日志切面	common/common-web/src/middleware/
+（新增）WebSocket 连接池管理	common/common-websocket/src/SessionManager.ts
+（新增）API Key 校验逻辑	common/common-security/src/ApiKeyGuard.ts
 
-### Node.js 项目
-| 技术 | 版本 | 用途 |
-|------|------|------|
-| React | 18.3.0 | 前端框架 |
-| Vite | 5.4.21 | 构建工具 |
-| TypeScript | 5.3.0 | 类型系统 |
-| Tailwind CSS | 3.4.1 | 样式框架 |
-| Fastify | - | Node.js 网关 |
-| WebSocket | - | 实时通信 |
+每个 common-* 下必须有自己的 package.json 和 tsconfig.json：
 
-### Java 项目
-| 技术 | 版本 | 用途 |
-|------|------|------|
-| Java | 17 | 运行环境 |
-| Spring Boot | 3.2.0 | 应用框架 |
-| Spring Cloud | 2023.0.0 | 微服务 |
-| Spring Cloud Alibaba | 2023.0.1.0 | 阿里云集成 |
-| MyBatis-Plus | 3.5.5 | ORM |
-| Nacos | - | 配置中心 |
+json
 
-### 桌面字幕
-| 技术 | 用途 |
-|------|------|
-| Python | 脚本语言 |
-| Win32 API | 原生窗口 |
-| GDI+ | 图形渲染 |
+// common/common-core/package.json
+{
+  "name": "@livetranslate/common-core",
+  "main": "src/index.ts"
+}
+第二步：业务服务 DDD 四层拆分 (services/)
+目标：将原 packages/gateway/src/services/ 里的混杂逻辑，拆成独立服务，每个服务内严格遵循 interfaces → application → domain → infrastructure。
 
-## 一键启动
+bash
 
-```bash
-# Windows
-start.bat
+# 创建 ASR 服务（API 模块 + Server 模块分离）
+mkdir -p services/asr-service/asr-api/src
+mkdir -p services/asr-service/asr-server/src/interfaces/controller
+mkdir -p services/asr-service/asr-server/src/interfaces/websocket
+mkdir -p services/asr-service/asr-server/src/application/service
+mkdir -p services/asr-service/asr-server/src/application/assembler
+mkdir -p services/asr-service/asr-server/src/domain/model
+mkdir -p services/asr-service/asr-server/src/domain/repository
+mkdir -p services/asr-service/asr-server/src/domain/service
+mkdir -p services/asr-service/asr-server/src/infrastructure/external
+mkdir -p services/asr-service/asr-server/src/infrastructure/repository
 
-# Linux/Mac
-chmod +x start.sh
-./start.sh
-```
+# 创建翻译服务（同上结构）
+mkdir -p services/translate-service/translate-api/src
+mkdir -p services/translate-service/translate-server/src/interfaces/...
+# ... 省略重复目录，结构同上
+代码迁移映射（以 ASR 为例）：
 
-### 启动流程
+原路径 (packages/gateway/)
+新路径 (services/asr-service/)
+DDD 层级
+services/QwenASRService.ts	asr-server/src/infrastructure/external/DashScopeWSClient.ts	基础设施层
+handlers/wsHandler.ts (音频接收部分)	asr-server/src/interfaces/websocket/ASRWebSocketHandler.ts	接口层
+handlers/wsHandler.ts (状态管理)	asr-server/src/application/service/ASRApplicationService.ts	应用服务层
+(新增) 连接状态对象 connState	asr-server/src/domain/model/ASRSession.ts	领域层
+(新增) WaitKScheduler.ts	translate-server/src/domain/service/WaitKDomainService.ts	领域层
 
-```
-[1/6] 安装 Node.js 依赖 (pnpm install)
-[2/6] 构建 Java 项目 (mvn package)
-[3/6] 启动 Nacos 配置中心
-[4/6] 启动 Java 网关 (port 3000)
-[5/6] 启动 Node.js 网关 (port 3001)
-[6/6] 启动前端 (port 5173)
-```
+API 模块纯洁性约束（asr-api 里只能放这些）：
 
-## 访问地址
+typescript
 
-| 服务 | 地址 | 说明 |
-|------|------|------|
-| 前端控制台 | http://localhost:5173 | React 控制台 |
-| SaaS 官网 | http://localhost:5173/landing.html | 落地页 |
-| Java 网关 | http://localhost:3000 | Spring Cloud Gateway |
-| Node.js 网关 | ws://localhost:3001/ws | WebSocket 服务 |
-| Nacos | http://localhost:8848 | 配置中心 |
+// services/asr-service/asr-api/src/dto/AudioChunkDTO.ts
+// services/asr-service/asr-api/src/dto/ASRResultDTO.ts
+// services/asr-service/asr-api/src/enums/ASRModelEnum.ts
+// services/asr-service/asr-api/src/index.ts (统一导出)
+禁止在 asr-api 中引入 fastify、ioredis 等框架依赖！
 
-## API 接口
+第三步：独立网关与认证中心 (gateway/ 和 auth/)
+目标：原 packages/gateway/ 升级为纯路由网关，剥离业务逻辑和认证逻辑。
 
-### WebSocket
+bash
 
-```
-ws://localhost:3000/ws/asr      # Java 网关
-ws://localhost:3001/ws           # Node.js 网关
-```
+# 1. 将原 gateway 移动并重命名
+mv packages/gateway gateway/gateway-service
 
-### REST API
+# 2. 剥离出来的认证逻辑放入 auth
+mkdir -p auth/auth-service/src/interfaces/controller
+mkdir -p auth/auth-service/src/application/service
+mkdir -p auth/auth-service/src/domain/model
+mkdir -p auth/auth-service/src/infrastructure/repository
+职责重新界定：
 
-```
-POST /api/translate              # 翻译接口
-GET  /api/auth/keys              # API Key 管理
-```
+gateway/gateway-service：只做路由转发（/ws/asr → asr-service）、跨域、请求日志。不写任何业务代码。
+auth/auth-service：接管原 wsHandler.ts 里的 if (msg.type === 'auth') 逻辑，负责 API Key 校验和 Token 发放。
+第四步：平台组件归拢 (components/)
+目标：将非核心业务链路的辅助系统放入 components/。
 
-## 功能特性
+bash
 
-### 前端控制台
-- 麦克风模式：Web Speech API 语音识别
-- 标签页模式：捕获音频发送到网关
-- 实时翻译：通过 API 翻译
-- 波形可视化：Canvas 音频波形
-- 管道可视化：7 步处理管道
-- 实时日志：彩色日志面板
+mkdir -p components/web-console
+mkdir -p components/desktop-lyrics
 
-### 桌面字幕
-- Win32 原生透明窗口
-- GDI+ 逐像素渲染
-- 鼠标穿透（点击穿过）
-- 动态切换颜色
-- WebSocket 实时更新
+# 移动前端
+mv packages/web/* components/web-console/
 
-### 网关服务
-- API 路由转发
-- WebSocket 代理
-- 请求日志
-- 错误处理
+# 移动桌面字幕
+mv packages/desktop-lyrics/* components/desktop-lyrics/
 
-## 配置说明
+# 删除空的 packages 目录及预留的空包
+rm -rf packages/
+第五步：补齐企业级基建目录
+目标：补全架构规范中要求的配置、文档、脚本、容器化目录。
 
-### 环境变量
+bash
 
-```bash
-# DashScope API Key
-DASHSCOPE_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
+# 1. 配置中心（替代原来的 .env 文件管理方式）
+mkdir -p config/env/DEV
+mkdir -p config/env/TEST
+mkdir -p config/env/PROD
 
-# 网关端口
-PORT=3000
+# 2. 文档体系
+mkdir -p docs/api-design
+mkdir -p docs/database     # 存放 SQL 迁移脚本
+mkdir -p docs/diagrams     # 存放 drawio 架构图
 
-# 日志级别
-LOG_LEVEL=info
-```
+# 3. 脚本与 CI/CD
+mkdir -p scripts/ci
+mkdir -p scripts/deploy
 
-### Nacos 配置
+# 4. 容器化
+mkdir -p docker/services
+mkdir -p k8s/configmap
+mkdir -p k8s/secrets
+第六步：更新 pnpm-workspace.yaml
+由于目录从扁平的 packages/* 变成了多层级，必须修改 pnpm 的工作区配置：
 
-```yaml
-# config/nacos/DEV/application-dev.yml
-dashscope:
-  api-key: sk-xxxxxxxxxxxxxxxxxxxxxxxx
-  ws-url: wss://dashscope.aliyuncs.com/api-ws/v1/realtime
-  default-model: qwen3.5-livetranslate-flash-realtime
-```
+yaml
 
-## 文档
+# pnpm-workspace.yaml
+packages:
+  - 'common/*'
+  - 'services/*/asr-api'
+  - 'services/*/asr-server'
+  - 'services/*/translate-api'
+  - 'services/*/translate-server'
+  - 'gateway/*'
+  - 'auth/*'
+  - 'components/*'
+第七步：重写 README.md 的目录树
+将 README 的结构说明替换为完全对标 Java 架构的新树：
 
-- [架构文档](docs/architecture.md)
-- [WebSocket 协议](docs/api-design/websocket-protocol.md)
-- [架构决策](docs/decisions/)
+📁 项目目录结构
+livetranslate-platform/├── pnpm-workspace.yaml # pnpm 多层级工作区配置├── package.json # 根配置├── tsconfig.base.json # TypeScript 基础配置├── .editorconfig # 编辑器代码风格统一├── .gitignore # Git 忽略规则├── README.md
+│├── common/ # 公共基础模块（按需引入）│ ├── common-core/ # 核心工具：常量、类型定义、异常枚举│ ├── common-web/ # Web 通用：统一响应体 Result、全局异常处理│ ├── common-websocket/ # WebSocket 通用：连接池管理、消息编解码│ ├── common-redis/ # Redis 通用：会话状态缓存封装│ └── common-security/ # 安全通用：API Key 解析、鉴权守卫│├── components/ # 平台级组件与边缘服务│ ├── web-console/ # React 前端控制台 (Vite)│ └── desktop-lyrics/ # 桌面字幕侧车服务│├── gateway/ # API 网关服务（统一入口）│ └── gateway-service/ # Fastify 路由转发、WebSocket 代理、日志│├── auth/ # 认证授权中心│ └── auth-service/ # API Key 校验、令牌管理│├── services/ # 核心业务服务群（DDD 分层）│ ├── asr-service/
+│ │ ├── asr-api/ # 对外暴露：DTO、枚举、类型契约│ │ └── asr-server/ # 服务实现│ │ └── src/│ │ ├── interfaces/ # 接口适配层│ │ ├── application/ # 应用服务层（用例编排）│ │ ├── domain/ # 领域层（核心逻辑，如 DashScope 状态机）│ │ └── infrastructure/ # 基础设施层（外部 API 调用）│ ││ └── translate-service/│ ├── translate-api/│ └── translate-server/│ └── src/│ ├── interfaces/│ ├── application/│ ├── domain/ # 包含 Wait-K 调度算法核心逻辑│ └── infrastructure/│├── config/ # 多环境配置管理│ └── env/│ ├── DEV/ # 开发环境变量│ ├── TEST/ # 测试环境变量│ └── PROD/ # 生产环境变量│├── docs/ # 项目文档体系│ ├── architecture.md # 架构设计说明│ ├── api-design/ # 接口协议文档│ ├── database/ # 数据库迭代脚本│ └── diagrams/ # 架构图源文件│├── scripts/ # 自动化脚本│ ├── ci/ # CI/CD 流水线配置│ └── deploy/ # 部署脚本│├── docker/ # Docker 镜像构建│ └── services/ # 各服务 Dockerfile│└── k8s/ # Kubernetes 编排清单 ├── configmap/ └── secrets/
 
-## GitHub
+附：DDD 层级代码规范（写入 README 的开发说明）
+为了防止团队把 DDD 目录写回“大杂烩”，必须在 README 中补充严格的层级依赖规范：
 
-https://github.com/HanDon001/AI-translation
+🏢 DDD 分层依赖规范（强制）
+在 services/*/xxx-server/ 中，严禁跨层调用，依赖方向必须单向向下：
+
+✅ 允许的依赖方向：interfaces → application → domain ← infrastructure (实现 domain 的接口)
+
+❌ 禁止的违规操作：
+
+domain 层 禁止引入 fastify、ioredis、axios 等外部框架。
+infrastructure 层 禁止直接被 interfaces 层 import（必须经过 application 层编排）。
+xxx-api 模块 禁止依赖任何 xxx-server 的代码，只允许包含纯 TypeScript 类型和接口。

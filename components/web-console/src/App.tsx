@@ -16,9 +16,11 @@ import { useSessionTimer } from './hooks/useSessionTimer';
 import { useTranslationResults } from './hooks/useTranslationResults';
 import { useFloatWindow } from './hooks/useFloatWindow';
 import { useDemoMode } from './hooks/useDemoMode';
+import { useErrorHandler } from './hooks/useErrorHandler';
 import { LANG_MAP } from './config/constants';
 import { API_ENDPOINTS } from './config/api';
-import './styles/console.css';
+import './styles/globals.css';
+import styles from './styles/console.module.css';
 
 export default function App() {
   /* ---- 配置状态 ---- */
@@ -58,6 +60,7 @@ export default function App() {
   const { steps, setStepState, resetSteps } = usePipelineSteps();
   const { logs, clear: clearLogs } = useConsoleLogs();
   const translationLog = useTranslationLog();
+  const { handleTranslationError, handleStartupError, handleGatewayError, handleWarning } = useErrorHandler({ showToast, setStepState });
 
   /* ---- 翻译（麦克风模式） ---- */
   const translateText = useCallback(async (text: string) => {
@@ -102,12 +105,9 @@ export default function App() {
         throw new Error(data.message || '翻译服务返回异常');
       }
     } catch (e: unknown) {
-      if (e instanceof Error && e.name === 'AbortError') return;
-      const msg = e instanceof Error ? e.message : '翻译失败';
-      setLiveTgt(`翻译失败: ${msg}`);
+      if (!handleTranslationError(e, text)) return;
+      setLiveTgt(`翻译失败`);
       setLiveLabel('错误');
-      setStepState('mt', 'error', msg);
-      addConsoleLog('err', `翻译失败: ${msg}`);
       addResult(text, null);
     } finally {
       setIsTranslating(false);
@@ -126,8 +126,8 @@ export default function App() {
       source.connect(analyser);
       analyserRef.current = analyser;
       addConsoleLog('ok', '音频分析器已初始化');
-    } catch {
-      addConsoleLog('warn', '音频分析器初始化失败（不影响识别）');
+    } catch (e) {
+      handleWarning('音频分析器初始化失败（不影响识别）', e);
     }
   }, []);
 
@@ -165,8 +165,7 @@ export default function App() {
       }
 
       if (msg.type === 'error') {
-        addConsoleLog('err', `网关错误: ${msg.payload?.message || '未知错误'}`);
-        showToast('err', msg.payload?.message || '翻译错误');
+        handleGatewayError(msg.payload);
       }
     };
 
@@ -282,8 +281,8 @@ export default function App() {
                 addConsoleLog('data', `ASR partial: "${text}"`);
               }
             }, srcLang);
-          } catch {
-            addConsoleLog('err', '麦克风访问失败，切换到演示模式');
+          } catch (e) {
+            handleWarning('麦克风访问失败，切换到演示模式', e);
             showToast('err', '麦克风访问失败，使用演示模式');
             startDemo(demoCallbacks);
           }
@@ -335,15 +334,13 @@ export default function App() {
           } else {
             addConsoleLog('warn', '未设置 API Key，将使用 Mock 模式');
           }
-        } catch {
-          addConsoleLog('warn', '标签页音频捕获失败，使用演示模式');
+        } catch (e) {
+          handleWarning('标签页音频捕获失败，使用演示模式', e);
           startDemo(demoCallbacks);
         }
       }
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '启动失败';
-      addConsoleLog('err', `启动失败: ${msg}`);
-      showToast('err', `启动失败: ${msg}`);
+      handleStartupError(e);
       setConnectionStatus('error');
       isRunningRef.current = false;
       setIsRunning(false);
@@ -395,7 +392,7 @@ export default function App() {
   }, [stopTimer]);
 
   return (
-    <div className="console-shell" style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <Topbar
         mode={mode}
         srcLang={srcLang}
@@ -406,27 +403,27 @@ export default function App() {
         onTgtLangChange={handleTgtLangChange}
       />
 
-      <div className="main">
-        <aside className="panel-left">
-          <div className="panel-section">
-            <div className="panel-section-title">
+      <div className={styles.main}>
+        <aside className={styles.panelLeft}>
+          <div className={styles.panelSection}>
+            <div className={styles.panelSectionTitle}>
               <i className="fa-solid fa-sliders" /> 参数配置
             </div>
-            <div className="ctrl-row">
-              <span className="ctrl-label">API Key</span>
+            <div className={styles.ctrlRow}>
+              <span className={styles.ctrlLabel}>API Key</span>
               <input
                 type="password"
-                className="ctrl-select"
+                className={styles.ctrlSelect}
                 placeholder="DashScope API Key"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 style={{ width: 140, fontSize: 11 }}
               />
             </div>
-            <div className="ctrl-row">
-              <span className="ctrl-label">模型状态</span>
-              <div className={`status-dot ${connectionStatus === 'connected' ? 'connected' : connectionStatus === 'error' ? 'error' : ''}`} style={{ fontSize: 10, padding: '3px 10px' }}>
-                <div className="dot" />
+            <div className={styles.ctrlRow}>
+              <span className={styles.ctrlLabel}>模型状态</span>
+              <div className={`${styles.statusDot} ${connectionStatus === 'connected' ? styles.connected : connectionStatus === 'error' ? styles.error : ''}`} style={{ fontSize: 10, padding: '3px 10px' }}>
+                <div className={styles.dot} />
                 <span>
                   {connectionStatus === 'disconnected' && '未连接'}
                   {connectionStatus === 'connecting' && '连接中...'}
@@ -435,9 +432,9 @@ export default function App() {
                 </span>
               </div>
             </div>
-            <div className="ctrl-row">
-              <span className="ctrl-label">源语言</span>
-              <select className="ctrl-select" value={srcLang} onChange={(e) => handleSrcLangChange(e.target.value)}>
+            <div className={styles.ctrlRow}>
+              <span className={styles.ctrlLabel}>源语言</span>
+              <select className={styles.ctrlSelect} value={srcLang} onChange={(e) => handleSrcLangChange(e.target.value)}>
                 <option value="en-US">English</option>
                 <option value="zh-CN">中文</option>
                 <option value="ja-JP">日本語</option>
@@ -448,9 +445,9 @@ export default function App() {
                 <option value="ru-RU">Русский</option>
               </select>
             </div>
-            <div className="ctrl-row">
-              <span className="ctrl-label">目标语言</span>
-              <select className="ctrl-select" value={tgtLang} onChange={(e) => handleTgtLangChange(e.target.value)}>
+            <div className={styles.ctrlRow}>
+              <span className={styles.ctrlLabel}>目标语言</span>
+              <select className={styles.ctrlSelect} value={tgtLang} onChange={(e) => handleTgtLangChange(e.target.value)}>
                 <option value="zh">中文</option>
                 <option value="en">English</option>
                 <option value="ja">日本語</option>
@@ -462,7 +459,7 @@ export default function App() {
               </select>
             </div>
             <div style={{ marginTop: 14 }}>
-              <button className={`btn-start ${isRunning ? 'running' : 'idle'}`} onClick={handleToggle}>
+              <button className={`${styles.btnStart} ${isRunning ? styles.running : styles.idle}`} onClick={handleToggle}>
                 {isRunning ? (
                   <><i className="fa-solid fa-stop" /><span>停止翻译</span></>
                 ) : (
@@ -472,7 +469,7 @@ export default function App() {
             </div>
             <div style={{ marginTop: 8 }}>
               <button
-                className="btn-desktop-subtitles"
+                className={styles.btnDesktopSubtitles}
                 onClick={async () => {
                   try {
                     const resp = await fetch(`${API_ENDPOINTS.DESKTOP_LYRICS}/toggle`);
@@ -488,7 +485,7 @@ export default function App() {
             </div>
             <div style={{ marginTop: 8 }}>
               <button
-                className="btn-desktop-subtitles"
+                className={styles.btnDesktopSubtitles}
                 onClick={() => {
                   const log = translationLog.getLog();
                   if (log.length === 0) {
@@ -514,7 +511,7 @@ export default function App() {
           <PipelineSteps steps={steps} />
         </aside>
 
-        <section className="panel-center">
+        <section className={styles.panelCenter}>
           <ResultsPanel
             results={results}
             sentenceCount={sentenceCount}
@@ -529,7 +526,7 @@ export default function App() {
           <Waveform isActive={isRunning} analyser={analyserRef.current} waveData={waveDataRef.current} />
         </section>
 
-        <aside className="panel-right">
+        <aside className={styles.panelRight}>
           <LogPanel logs={logs} onClear={clearLogs} />
         </aside>
       </div>
@@ -537,33 +534,33 @@ export default function App() {
       <ToastContainer toasts={toasts} />
 
       {showApiKeyModal && (
-        <div className="modal-overlay" onClick={() => setShowApiKeyModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
+        <div className={styles.modalOverlay} onClick={() => setShowApiKeyModal(false)}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
               <h3><i className="fa-solid fa-key" /> 输入 API Key</h3>
-              <button className="modal-close" onClick={() => setShowApiKeyModal(false)}>
+              <button className={styles.modalClose} onClick={() => setShowApiKeyModal(false)}>
                 <i className="fa-solid fa-xmark" />
               </button>
             </div>
-            <div className="modal-body">
-              <p className="modal-desc">请输入 DashScope API Key 以使用实时翻译功能</p>
+            <div className={styles.modalBody}>
+              <p className={styles.modalDesc}>请输入 DashScope API Key 以使用实时翻译功能</p>
               <input
                 type="password"
-                className="modal-input"
+                className={styles.modalInput}
                 placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
                 value={tempApiKey}
                 onChange={(e) => setTempApiKey(e.target.value)}
                 autoFocus
               />
-              <p className="modal-hint">
+              <p className={styles.modalHint}>
                 <i className="fa-solid fa-circle-info" />
                 API Key 可在阿里云百炼平台获取
               </p>
             </div>
-            <div className="modal-footer">
-              <button className="modal-btn cancel" onClick={() => setShowApiKeyModal(false)}>取消</button>
+            <div className={styles.modalFooter}>
+              <button className={`${styles.modalBtn} ${styles.cancel}`} onClick={() => setShowApiKeyModal(false)}>取消</button>
               <button
-                className="modal-btn confirm"
+                className={`${styles.modalBtn} ${styles.confirm}`}
                 onClick={() => {
                   if (tempApiKey.trim()) {
                     const key = tempApiKey.trim();

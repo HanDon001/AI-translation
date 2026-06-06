@@ -1,6 +1,16 @@
 import { useRef, useCallback, useEffect } from 'react';
-import type { SubtitlePatchPayload } from '@realtime-interp/shared';
-import { DEBOUNCE_MS } from '@realtime-interp/shared';
+
+/**
+ * 字幕补丁类型
+ */
+interface SubtitlePatchPayload {
+  action: 'ADD_TEMP' | 'MARK_FINAL' | 'INVALIDATE';
+  target_range: [number, number];
+  new_text: string;
+  style: 'temp' | 'final';
+}
+
+const DEBOUNCE_MS = 50;
 
 /**
  * 字幕 Patch 防抖合并 Hook

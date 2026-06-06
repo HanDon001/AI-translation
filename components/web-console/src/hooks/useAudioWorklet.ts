@@ -1,5 +1,6 @@
 import { useRef, useCallback } from 'react';
-import { SAMPLE_RATE } from '@realtime-interp/shared';
+
+const SAMPLE_RATE = 16000;
 
 export type AudioSource = 'mic' | 'tab';
 

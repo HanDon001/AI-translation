@@ -1,6 +1,17 @@
 import { useRef, useImperativeHandle, forwardRef } from 'react';
-import type { SubtitlePatchPayload } from '@realtime-interp/shared';
-import { MAX_BUFFER_SIZE, PRUNE_COUNT } from '@realtime-interp/shared';
+
+/**
+ * 字幕补丁类型
+ */
+interface SubtitlePatchPayload {
+  action: 'ADD_TEMP' | 'MARK_FINAL' | 'INVALIDATE';
+  target_range: [number, number];
+  new_text: string;
+  style: 'temp' | 'final';
+}
+
+const MAX_BUFFER_SIZE = 50;
+const PRUNE_COUNT = 10;
 
 /**
  * 核心字幕渲染组件

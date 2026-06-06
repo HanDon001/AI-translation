@@ -1,5 +1,3 @@
-import type { SubtitleStyle } from '@realtime-interp/shared';
-
 /**
  * DOM 局部更新工具
  *
@@ -7,6 +5,8 @@ import type { SubtitleStyle } from '@realtime-interp/shared';
  *  - 全程不触发 React Virtual DOM Diff
  *  - 所有操作直接作用于真实 DOM 节点
  */
+
+export type SubtitleStyle = 'temp' | 'final';
 
 /**
  * 在容器末尾创建临时字幕 span

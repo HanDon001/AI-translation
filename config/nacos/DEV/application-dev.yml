@@ -10,7 +10,7 @@ spring:
 
 # DashScope 配置
 dashscope:
-  api-key: sk-fd3705af25f64659bed8ee4fdab5185c
+  api-key: ${DASHSCOPE_API_KEY:}
   ws-url: wss://dashscope.aliyuncs.com/api-ws/v1/realtime
   default-model: qwen3.5-livetranslate-flash-realtime
 

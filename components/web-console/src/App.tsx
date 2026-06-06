@@ -102,7 +102,7 @@ export default function App() {
 
           if (new_text) {
             latenciesRef.current.push(350);
-            addResult(new_text, new_text);
+            addResult(source_text || '', new_text);
           }
         }
       }

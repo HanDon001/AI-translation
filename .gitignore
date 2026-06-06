@@ -1,35 +1,33 @@
-# Compiled class file
+# ---- 敏感信息 ----
+.env
+.env.*
+!.env.example
+
+# ---- Java ----
 *.class
-
-# Log file
-*.log
-
-# BlueJ files
-*.ctxt
-
-# Mobile Tools for Java (J2ME)
-.mtj.tmp/
-
-# Package Files #
 *.jar
 *.war
 *.nar
 *.ear
-*.zip
-*.tar.gz
-*.rar
-
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
+target/
+!.mvn/wrapper/maven-wrapper.xml
 hs_err_pid*
 replay_pid*
 
-# Maven
-target/
-!.mvn/wrapper/maven-wrapper.xml
-!**/src/main/**/target/
-!**/src/test/**/target/
+# ---- Node ----
+node_modules/
+dist/
+*.log
+*.tsbuildinfo
 
-# IDE
+# ---- Python ----
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# ---- IDE ----
 .idea/
 *.iws
 *.iml
@@ -40,21 +38,14 @@ target/
 .project
 .factorypath
 
-# OS
+# ---- OS ----
 .DS_Store
 Thumbs.db
 
-# Node
-node_modules/
-dist/
-.env
+# ---- 压缩包 ----
+*.zip
+*.tar.gz
+*.rar
 
-# Python
-__pycache__/
-*.pyc
-*.pyo
-.venv/
-venv/
-
-# Docker (保留 docker 目录)
+# ---- Docker ----
 .docker/

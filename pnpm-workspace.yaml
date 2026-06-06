@@ -7,3 +7,4 @@ packages:
   - 'gateway/*'
   - 'auth/*'
   - 'components/*'
+  - '!components/desktop-lyrics'

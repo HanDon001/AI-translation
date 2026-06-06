@@ -83,19 +83,23 @@ export default function App() {
       const controller = new AbortController();
       translateAbortRef.current = controller;
 
-      const url = `${API_ENDPOINTS.MYMEMORY}?q=${encodeURIComponent(text)}&langpair=${srcCode}|${tgtCode}`;
-      const resp = await fetch(url, { signal: controller.signal });
+      const resp = await fetch(API_ENDPOINTS.TRANSLATE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, sourceLang: srcCode, targetLang: tgtCode }),
+        signal: controller.signal,
+      });
       const data = await resp.json();
 
-      if (data.responseStatus === 200 && data.responseData?.translatedText) {
-        const translated = data.responseData.translatedText;
+      if (data.code === 0 && data.data) {
+        const translated = data.data;
         setLiveTgt(translated);
         setLiveLabel('识别中');
         setStepState('mt', 'done', '翻译完成', '200ms');
         addConsoleLog('ok', `翻译完成: "${translated.substring(0, 30)}..."`);
         addResult(text, translated);
       } else {
-        throw new Error(data.responseDetails || '翻译服务返回异常');
+        throw new Error(data.message || '翻译服务返回异常');
       }
     } catch (e: unknown) {
       if (e instanceof Error && e.name === 'AbortError') return;

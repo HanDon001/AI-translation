@@ -5,7 +5,6 @@ import { ResultsPanel } from './components/ResultsPanel';
 import { Waveform } from './components/Waveform';
 import { LogPanel } from './components/LogPanel';
 import { ToastContainer } from './components/Toast';
-import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import { useAudioWorklet } from './hooks/useAudioWorklet';
 import { useWebSocket } from './hooks/useWebSocket';
 import { usePipelineSteps } from './hooks/usePipelineSteps';
@@ -41,7 +40,6 @@ export default function App() {
 
   const isRunningRef = useRef(false);
   const lastFinalTextRef = useRef('');
-  const translateAbortRef = useRef<AbortController | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const waveDataRef = useRef<Float32Array>(new Float32Array(128));
@@ -53,66 +51,12 @@ export default function App() {
   const { results, sentenceCount, avgLatency, addResult, resetResults, latenciesRef } = useTranslationResults();
   const { updateFloatWindow } = useFloatWindow();
   const { startDemo, stopDemo } = useDemoMode();
-  const { start: startSpeech, stop: stopSpeech } = useSpeechRecognition();
   const { start: startWorklet, stop: stopWorklet } = useAudioWorklet();
   const { connect: wsConnect, disconnect: wsDisconnect, send: wsSend } = useWebSocket(API_ENDPOINTS.GATEWAY_WS);
   const { steps, setStepState, resetSteps } = usePipelineSteps();
   const { logs, clear: clearLogs } = useConsoleLogs();
   const translationLog = useTranslationLog();
-  const { handleTranslationError, handleStartupError, handleGatewayError, handleWarning } = useErrorHandler({ showToast, setStepState });
-
-  /* ---- 翻译（麦克风模式） ---- */
-  const translateText = useCallback(async (text: string) => {
-    if (!text.trim()) return;
-
-    const srcCode = LANG_MAP[srcLang] || 'en';
-    const tgtCode = tgtLang;
-
-    if (srcCode === tgtCode) {
-      setLiveTgt(text);
-      setLiveLabel('识别中');
-      addResult(text, text);
-      return;
-    }
-
-    setIsTranslating(true);
-    setLiveTgt('正在翻译...');
-    setLiveLabel('翻译中');
-    setStepState('mt', 'active', '翻译中...');
-    addConsoleLog('info', `翻译请求: "${text.substring(0, 30)}..."`);
-
-    try {
-      const controller = new AbortController();
-      translateAbortRef.current = controller;
-
-      const resp = await fetch(API_ENDPOINTS.TRANSLATE, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, sourceLang: srcCode, targetLang: tgtCode }),
-        signal: controller.signal,
-      });
-      const data = await resp.json();
-
-      if (data.code === 0 && data.data) {
-        const translated = data.data;
-        setLiveTgt(translated);
-        setLiveLabel('识别中');
-        setStepState('mt', 'done', '翻译完成', '200ms');
-        addConsoleLog('ok', `翻译完成: "${translated.substring(0, 30)}..."`);
-        addResult(text, translated);
-      } else {
-        throw new Error(data.message || '翻译服务返回异常');
-      }
-    } catch (e: unknown) {
-      if (!handleTranslationError(e, text)) return;
-      setLiveTgt('翻译失败');
-      setLiveLabel('错误');
-      addResult(text, null);
-    } finally {
-      setIsTranslating(false);
-      translateAbortRef.current = null;
-    }
-  }, [srcLang, tgtLang, setStepState, addResult]);
+  const { handleStartupError, handleGatewayError, handleWarning } = useErrorHandler({ showToast, setStepState });
 
   /* ---- 音频可视化 ---- */
   const setupAudioAnalyser = useCallback((stream: MediaStream) => {
@@ -182,12 +126,10 @@ export default function App() {
     isRunningRef.current = false;
     setIsRunning(false);
     setConnectionStatus('disconnected');
-    stopSpeech();
     stopWorklet();
     stopTimer();
     resetSteps();
     stopDemo();
-    translateAbortRef.current?.abort();
     wsDisconnect();
 
     if (audioCtxRef.current) {
@@ -199,7 +141,7 @@ export default function App() {
     addConsoleLog('info', 'Closing WebSocket connection...');
     addConsoleLog('ok', 'Session closed');
     showToast('info', '已停止');
-  }, [stopSpeech, stopWorklet, stopTimer, resetSteps, showToast, wsDisconnect, stopDemo]);
+  }, [stopWorklet, stopTimer, resetSteps, showToast, wsDisconnect, stopDemo]);
 
   const handleToggle = useCallback(async () => {
     if (isRunningRef.current) {
@@ -252,42 +194,48 @@ export default function App() {
       };
 
       if (mode === 'mic') {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        // 麦克风模式：捕获音频发送到网关做 ASR + 翻译
+        addConsoleLog('info', '麦克风模式：捕获音频并发送到网关处理');
+        showToast('ok', '麦克风已启动，开始说话');
 
-        if (SpeechRecognition) {
-          addConsoleLog('ok', 'Web Speech API 可用，启动语音识别');
-          showToast('ok', '麦克风已启动，开始说话');
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          setupAudioAnalyser(stream);
 
-          try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            setupAudioAnalyser(stream);
+          startWorklet((chunk: Float32Array) => {
+            if (!isRunningRef.current) return;
 
-            startSpeech((text: string, isFinal: boolean) => {
-              if (!isRunningRef.current) return;
+            const pcm16 = new Int16Array(chunk.length);
+            for (let i = 0; i < chunk.length; i++) {
+              const s = Math.max(-1, Math.min(1, chunk[i]));
+              pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+            const bytes = new Uint8Array(pcm16.buffer);
+            const base64 = btoa(String.fromCharCode(...bytes));
 
-              if (isFinal) {
-                setLiveSrc(text);
-                setLiveLabel('翻译中');
-                setStepState('vad', 'done', '检测到语音', '30ms');
-                setStepState('asr', 'done', '识别完成', '150ms');
-                addConsoleLog('data', `ASR final: "${text}"`);
-                translateText(text);
-              } else {
-                setLiveSrc(text);
-                setLiveLabel('识别中');
-                setStepState('vad', 'active', '检测语音活动...');
-                setStepState('asr', 'active', '流式转录中...');
-                addConsoleLog('data', `ASR partial: "${text}"`);
-              }
-            }, srcLang);
-          } catch (e) {
-            handleWarning('麦克风访问失败，切换到演示模式', e);
-            showToast('err', '麦克风访问失败，使用演示模式');
-            startDemo(demoCallbacks);
+            const windowId = windowIdRef.current++;
+            const startMs = windowId * 400;
+
+            wsSend({
+              type: 'audio_chunk',
+              payload: { window_id: windowId, start_ms: startMs, duration: 400, pcm_data: base64 },
+            });
+
+            setStepState('vad', 'active', '检测语音活动...');
+          }, 'mic', stream);
+
+          addConsoleLog('ok', '麦克风音频已捕获，开始发送到网关');
+          setStepState('vad', 'active', '等待语音...');
+
+          if (apiKey) {
+            wsSend({ type: 'set_api_key', payload: { apiKey } });
+            addConsoleLog('info', 'API Key 已发送到网关');
+          } else {
+            addConsoleLog('warn', '未设置 API Key，将使用 Mock 模式');
           }
-        } else {
-          addConsoleLog('warn', 'Web Speech API 不可用，使用演示模式');
-          showToast('info', '浏览器不支持语音识别，使用演示模式');
+        } catch (e) {
+          handleWarning('麦克风访问失败，切换到演示模式', e);
+          showToast('err', '麦克风访问失败，使用演示模式');
           startDemo(demoCallbacks);
         }
       } else {
@@ -345,7 +293,7 @@ export default function App() {
       setIsRunning(false);
       stopTimer();
     }
-  }, [mode, srcLang, tgtLang, apiKey, startSpeech, startWorklet, wsConnect, wsSend, setupAudioAnalyser, startTimer, stopTimer, resetSteps, setStepState, translateText, showToast, startDemo, handleStop, resetResults, addResult]);
+  }, [mode, srcLang, tgtLang, apiKey, startWorklet, wsConnect, wsSend, setupAudioAnalyser, startTimer, stopTimer, resetSteps, setStepState, showToast, startDemo, handleStop, resetResults, addResult]);
 
   /* ---- 语言切换 ---- */
   const handleSrcLangChange = useCallback((v: string) => {
@@ -385,7 +333,6 @@ export default function App() {
   useEffect(() => {
     return () => {
       stopTimer();
-      translateAbortRef.current?.abort();
       if (audioCtxRef.current) audioCtxRef.current.close();
     };
   }, [stopTimer]);

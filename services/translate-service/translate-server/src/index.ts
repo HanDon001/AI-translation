@@ -7,12 +7,13 @@ const translator = new MyMemoryTranslator();
 
 // 翻译接口 - 使用统一响应体
 app.post('/translate', async (request, reply) => {
-  const { text, sourceLang, targetLang, context, apiKey } = request.body as {
+  const { text, sourceLang, targetLang, context, apiKey, glossary } = request.body as {
     text: string;
     sourceLang: string;
     targetLang: string;
     context?: Array<{ src: string; tgt: string }>;
     apiKey?: string;
+    glossary?: Record<string, string>;
   };
 
   // 参数校验
@@ -21,7 +22,7 @@ app.post('/translate', async (request, reply) => {
   }
 
   try {
-    const result = await translator.translate(text, sourceLang, targetLang, context, apiKey);
+    const result = await translator.translate(text, sourceLang, targetLang, context, apiKey, glossary);
     return success(result);
   } catch (err) {
     request.log.error(err, '翻译失败');

@@ -1,4 +1,27 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
+
+// 预设 IT 常用术语缩写
+const PRESET_GLOSSARY: [string, string][] = [
+  ['Kubernetes', 'k8s'],
+  ['Internationalization', 'i18n'],
+  ['Localization', 'l10n'],
+  ['Accessibility', 'a11y'],
+  ['Observability', 'o11y'],
+  ['Artificial Intelligence', 'AI'],
+  ['Machine Learning', 'ML'],
+  ['Natural Language Processing', 'NLP'],
+  ['Application Programming Interface', 'API'],
+  ['Continuous Integration', 'CI'],
+  ['Continuous Deployment', 'CD'],
+  ['Software Development Kit', 'SDK'],
+  ['Command Line Interface', 'CLI'],
+  ['Graphical User Interface', 'GUI'],
+  ['Domain Name System', 'DNS'],
+  ['Transport Layer Security', 'TLS'],
+  ['Internet of Things', 'IoT'],
+  ['Proof of Concept', 'PoC'],
+];
+
 import { Topbar } from './components/Topbar';
 import { PipelineSteps } from './components/PipelineSteps';
 import { ResultsPanel } from './components/ResultsPanel';
@@ -37,6 +60,15 @@ export default function App() {
   });
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const [tempApiKey, setTempApiKey] = useState('');
+
+  // 术语表：专业名称 → 缩写
+  const [glossary, setGlossary] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(localStorage.getItem('livetranslate_glossary') || '{}'); }
+    catch { return {}; }
+  });
+  const [showGlossaryModal, setShowGlossaryModal] = useState(false);
+  const [glossaryNewFull, setGlossaryNewFull] = useState('');
+  const [glossaryNewAbbr, setGlossaryNewAbbr] = useState('');
 
   const isRunningRef = useRef(false);
   const lastFinalTextRef = useRef('');
@@ -230,6 +262,9 @@ export default function App() {
           if (apiKey) {
             wsSend({ type: 'set_api_key', payload: { apiKey } });
             addConsoleLog('info', 'API Key 已发送到网关');
+            if (Object.keys(glossary).length > 0) {
+              wsSend({ type: 'set_glossary', payload: { glossary } });
+            }
           } else {
             addConsoleLog('warn', '未设置 API Key，将使用 Mock 模式');
           }
@@ -278,6 +313,9 @@ export default function App() {
           if (apiKey) {
             wsSend({ type: 'set_api_key', payload: { apiKey } });
             addConsoleLog('info', 'API Key 已发送到网关');
+            if (Object.keys(glossary).length > 0) {
+              wsSend({ type: 'set_glossary', payload: { glossary } });
+            }
           } else {
             addConsoleLog('warn', '未设置 API Key，将使用 Mock 模式');
           }
@@ -452,6 +490,15 @@ export default function App() {
                 <i className="fa-solid fa-file-export" /> 导出记录
               </button>
             </div>
+            <div style={{ marginTop: 8 }}>
+              <button
+                className="btn-desktop-subtitles"
+                onClick={() => setShowGlossaryModal(true)}
+                style={{ background: 'rgba(124, 58, 237, 0.1)', border: '1px solid rgba(124, 58, 237, 0.3)' }}
+              >
+                <i className="fa-solid fa-book-bookmark" /> 术语表 {Object.keys(glossary).length > 0 ? `(${Object.keys(glossary).length})` : ''}
+              </button>
+            </div>
           </div>
 
           <PipelineSteps steps={steps} />
@@ -519,6 +566,133 @@ export default function App() {
               >
                 确认
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showGlossaryModal && (
+        <div className="modal-overlay" onClick={() => setShowGlossaryModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
+            <div className="modal-header">
+              <h3><i className="fa-solid fa-book-bookmark" /> 术语表管理</h3>
+              <button className="modal-close" onClick={() => setShowGlossaryModal(false)}>
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+            <div className="modal-body">
+              <p className="modal-desc">设置专业术语缩写，AI 翻译时将自动转换。例如：Kubernetes → k8s</p>
+
+              {/* 现有术语列表 */}
+              {Object.keys(glossary).length > 0 && (
+                <div style={{ marginBottom: 16, maxHeight: 200, overflowY: 'auto' }}>
+                  <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ color: 'var(--muted)', fontSize: 11, textAlign: 'left' }}>
+                        <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>专业名称</th>
+                        <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>缩写</th>
+                        <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)', width: 40 }} />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(glossary).map(([full, abbr]) => (
+                        <tr key={full} style={{ borderBottom: '1px solid rgba(214,226,239,0.4)' }}>
+                          <td style={{ padding: '6px 8px', color: 'var(--fg)' }}>{full}</td>
+                          <td style={{ padding: '6px 8px', color: 'var(--accent)', fontWeight: 600 }}>{abbr}</td>
+                          <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                            <button
+                              onClick={() => {
+                                const next = { ...glossary };
+                                delete next[full];
+                                setGlossary(next);
+                                try { localStorage.setItem('livetranslate_glossary', JSON.stringify(next)); } catch {}
+                                showToast('ok', `已删除 "${full}"`);
+                              }}
+                              style={{ background: 'transparent', border: 'none', color: 'var(--warm)', cursor: 'pointer', fontSize: 14 }}
+                              title="删除"
+                            >
+                              <i className="fa-solid fa-trash-can" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* 添加新术语 */}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="text"
+                  className="modal-input"
+                  placeholder="专业名称，如 Kubernetes"
+                  value={glossaryNewFull}
+                  onChange={(e) => setGlossaryNewFull(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <span style={{ color: 'var(--muted)', fontSize: 14 }}>→</span>
+                <input
+                  type="text"
+                  className="modal-input"
+                  placeholder="缩写，如 k8s"
+                  value={glossaryNewAbbr}
+                  onChange={(e) => setGlossaryNewAbbr(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <button
+                  className="modal-btn confirm"
+                  onClick={() => {
+                    const full = glossaryNewFull.trim();
+                    const abbr = glossaryNewAbbr.trim();
+                    if (!full || !abbr) return;
+                    const next = { ...glossary, [full]: abbr };
+                    setGlossary(next);
+                    try { localStorage.setItem('livetranslate_glossary', JSON.stringify(next)); } catch {}
+                    setGlossaryNewFull('');
+                    setGlossaryNewAbbr('');
+                    showToast('ok', `已添加 "${full}" → "${abbr}"`);
+                  }}
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  <i className="fa-solid fa-plus" /> 添加
+                </button>
+              </div>
+
+              {/* 预设模板 */}
+              <div style={{ marginTop: 16 }}>
+                <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>一键添加 IT 常用术语：</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {PRESET_GLOSSARY.map(([full, abbr]) => (
+                    <button
+                      key={full}
+                      onClick={() => {
+                        if (glossary[full]) return;
+                        const next = { ...glossary, [full]: abbr };
+                        setGlossary(next);
+                        try { localStorage.setItem('livetranslate_glossary', JSON.stringify(next)); } catch {}
+                        showToast('ok', `已添加 "${full}" → "${abbr}"`);
+                      }}
+                      disabled={!!glossary[full]}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: 11,
+                        borderRadius: 6,
+                        border: `1px solid ${glossary[full] ? 'var(--border)' : 'var(--accent)'}`,
+                        background: glossary[full] ? 'var(--bg)' : 'var(--accent-light)',
+                        color: glossary[full] ? 'var(--muted)' : 'var(--accent)',
+                        cursor: glossary[full] ? 'default' : 'pointer',
+                        opacity: glossary[full] ? 0.5 : 1,
+                      }}
+                    >
+                      {full} → {abbr}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="modal-btn cancel" onClick={() => setShowGlossaryModal(false)}>关闭</button>
             </div>
           </div>
         </div>

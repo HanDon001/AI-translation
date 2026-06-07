@@ -52,6 +52,7 @@ export class ASRWebSocketHandler {
     let apiKey = '';
     let sourceLang = DEFAULT_SOURCE_LANG;
     let targetLang = DEFAULT_TARGET_LANG;
+    let glossary: Record<string, string> = {};
 
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     let cooldownTimer: ReturnType<typeof setTimeout> | null = null;
@@ -109,6 +110,8 @@ export class ASRWebSocketHandler {
             contextHistory.push({ src, tgt });
             if (contextHistory.length > CONTEXT_MAX) contextHistory.shift();
           },
+          getGlossary: () => glossary,
+          setGlossary: (g: Record<string, string>) => { glossary = g; },
         });
       } catch (err) {
         console.error('[ASR] Error:', err);
@@ -146,6 +149,8 @@ export class ASRWebSocketHandler {
       exitCooldown: () => void;
       getContext: () => Array<{ src: string; tgt: string }>;
       addContext: (src: string, tgt: string) => void;
+      getGlossary: () => Record<string, string>;
+      setGlossary: (g: Record<string, string>) => void;
     }
   ): Promise<void> {
     const { type, payload } = msg;
@@ -160,7 +165,7 @@ export class ASRWebSocketHandler {
       if (!text) return;
 
       const version = this.translateVersion;
-      const translated = await this.translateText(text, state.getSourceLang(), state.getTargetLang(), state.getApiKey(), state.getContext());
+      const translated = await this.translateText(text, state.getSourceLang(), state.getTargetLang(), state.getApiKey(), state.getContext(), state.getGlossary());
 
       if (version !== this.translateVersion) {
         console.log(`[ASR] Discard stale partial (v${version})`);
@@ -211,7 +216,7 @@ export class ASRWebSocketHandler {
               return;
             }
 
-            const translated = await this.translateText(text, state.getSourceLang(), state.getTargetLang(), state.getApiKey(), state.getContext());
+            const translated = await this.translateText(text, state.getSourceLang(), state.getTargetLang(), state.getApiKey(), state.getContext(), state.getGlossary());
             state.addContext(text, translated);
             ws.send(JSON.stringify({
               type: 'subtitle_patch',
@@ -283,6 +288,14 @@ export class ASRWebSocketHandler {
       return;
     }
 
+    // ---- 术语表 ----
+    if (type === 'set_glossary') {
+      const gl = (payload?.glossary as Record<string, string>) || {};
+      state.setGlossary(gl);
+      console.log(`[ASR] Glossary updated: ${Object.keys(gl).length} entries`);
+      return;
+    }
+
     // ---- 配置参数 ----
     if (type === 'config') {
       if (payload?.sourceLang) state.setSourceLang(payload.sourceLang as string);
@@ -292,7 +305,7 @@ export class ASRWebSocketHandler {
     }
   }
 
-  private async translateText(text: string, sourceLang: string, targetLang: string, apiKey: string, context?: Array<{ src: string; tgt: string }>): Promise<string> {
+  private async translateText(text: string, sourceLang: string, targetLang: string, apiKey: string, context?: Array<{ src: string; tgt: string }>, glossary?: Record<string, string>): Promise<string> {
     if (sourceLang === targetLang) return text;
     if (!text.trim()) return text;
 
@@ -304,7 +317,7 @@ export class ASRWebSocketHandler {
         const resp = await fetch('http://localhost:3002/translate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, sourceLang, targetLang, context, apiKey }),
+          body: JSON.stringify({ text, sourceLang, targetLang, context, apiKey, glossary }),
           signal: controller.signal,
         });
         clearTimeout(timer);

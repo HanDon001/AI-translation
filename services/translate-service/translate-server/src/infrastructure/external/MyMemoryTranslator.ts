@@ -18,7 +18,7 @@ export class MyMemoryTranslator {
   /**
    * 翻译+纠错一步到位（默认走 DashScope LLM，失败走 MyMemory 兜底）
    */
-  async translate(text: string, sourceLang: string, targetLang: string, context?: Array<{ src: string; tgt: string }>, apiKey?: string): Promise<string> {
+  async translate(text: string, sourceLang: string, targetLang: string, context?: Array<{ src: string; tgt: string }>, apiKey?: string, glossary?: Record<string, string>): Promise<string> {
     const dashscopeKey = apiKey || process.env.DASHSCOPE_API_KEY || '';
     const srcName = LANG_NAMES[sourceLang] || sourceLang;
     const tgtName = LANG_NAMES[targetLang] || targetLang;
@@ -27,6 +27,13 @@ export class MyMemoryTranslator {
     if (context && context.length > 0) {
       const lines = context.map((c, i) => `${i + 1}. ${c.src} → ${c.tgt}`).join('\n');
       contextHint = `\n\nContext (do NOT repeat these):\n${lines}`;
+    }
+
+    // 术语表：专业名称 → 缩写
+    let glossaryHint = '';
+    if (glossary && Object.keys(glossary).length > 0) {
+      const entries = Object.entries(glossary).map(([full, abbr]) => `"${full}" → "${abbr}"`).join(', ');
+      glossaryHint = `\n\nCRITICAL: Use the following term abbreviations in your translation. When you encounter any of these full terms in the source text, translate them to their abbreviated forms:\n${entries}\nApply these abbreviations naturally in the translated text.`;
     }
 
     // 主路径：DashScope LLM 翻译+纠错
@@ -42,7 +49,7 @@ export class MyMemoryTranslator {
           messages: [
             {
               role: 'system',
-              content: `You are a professional translator. Translate the following ${srcName} text into ${tgtName}. Fix any errors, ensure natural phrasing, and use context to resolve ambiguities. Output ONLY the translation, no explanations.${contextHint}`,
+              content: `You are a professional translator. Translate the following ${srcName} text into ${tgtName}. Fix any errors, ensure natural phrasing, and use context to resolve ambiguities. Output ONLY the translation, no explanations.${contextHint}${glossaryHint}`,
             },
             { role: 'user', content: text },
           ],

@@ -38,6 +38,7 @@ class SignalBridge(QObject):
     text_changed = pyqtSignal(str, bool)  # (text, is_final)
     color_changed = pyqtSignal(int)
     visibility_changed = pyqtSignal(bool)
+    pause_toggled = pyqtSignal(bool)
 
 
 class CloseButton(QLabel):
@@ -67,11 +68,54 @@ class CloseButton(QLabel):
             self.clicked.emit()
 
 
+class StopButton(QLabel):
+    """停止翻译按钮（仅停止桌面字幕显示，不影响共享音频/ASR）"""
+    clicked = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__("暂停", parent)
+        self.setFixedSize(40, 22)
+        self.setAlignment(Qt.AlignCenter)
+        self.setFont(QFont("Microsoft YaHei", 9))
+        self.setStyleSheet("""
+            QLabel {
+                color: rgba(255, 255, 255, 140);
+                background: rgba(255, 255, 255, 20);
+                border-radius: 4px;
+            }
+            QLabel:hover {
+                color: rgba(255, 255, 255, 240);
+                background: rgba(255, 180, 50, 140);
+            }
+        """)
+        self.setCursor(Qt.PointingHandCursor)
+        self._stopped = False
+
+    def toggle(self):
+        self._stopped = not self._stopped
+        if self._stopped:
+            self.setText("开始")
+            self.setStyleSheet(self.styleSheet().replace(
+                "background: rgba(255, 180, 50, 140);",
+                "background: rgba(80, 220, 120, 140);"))
+        else:
+            self.setText("暂停")
+            self.setStyleSheet(self.styleSheet().replace(
+                "background: rgba(80, 220, 120, 140);",
+                "background: rgba(255, 180, 50, 140);"))
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.toggle()
+            self.clicked.emit()
+
+
 class DesktopLyrics(QWidget):
     def __init__(self, signals: SignalBridge):
         super().__init__()
         self.signals = signals
         self.color_idx = 0
+        self._stopped = False
 
         # 窗口属性
         self.setWindowFlags(
@@ -109,7 +153,10 @@ class DesktopLyrics(QWidget):
         layout.addWidget(self.label_main)
         layout.addWidget(self.label_sub)
 
-        # 右上角关闭按钮（手动定位 → 隐藏窗口，通过 Web 控制台可重新显示）
+        # 右上角按钮（手动定位）
+        self._stop_btn = StopButton(self)
+        self._stop_btn.clicked.connect(self._on_stop_toggled)
+
         self._close_btn = CloseButton(self)
         self._close_btn.clicked.connect(lambda: self.signals.visibility_changed.emit(False))
 
@@ -131,7 +178,18 @@ class DesktopLyrics(QWidget):
         self._drag_pos = None
         self.setMouseTracking(True)
 
+    def _on_stop_toggled(self):
+        self._stopped = self._stop_btn._stopped
+        if self._stopped:
+            self.label_main.setText("翻译已停止")
+            self.label_sub.setText("")
+        else:
+            self.label_main.setText(Config.DEFAULT_TEXT)
+            self.label_sub.setText("")
+
     def _on_text_changed(self, text: str, is_final: bool = False):
+        if self._stopped:
+            return
         if is_final:
             # 最终精确翻译 → 下方覆盖显示，清空上方预览
             self.label_sub.setText(text)
@@ -179,10 +237,11 @@ class DesktopLyrics(QWidget):
         self.signals.color_changed.emit(self.color_idx + 1)
 
     def resizeEvent(self, _event):
-        """窗口大小变化时，把手柄定位到右下角，关闭按钮定位到右上角"""
+        """窗口大小变化时，把手柄定位到右下角，按钮定位到右上角"""
         w = self.width()  # type: ignore[union-attr]
         h = self.height()  # type: ignore[union-attr]
         self._grip.move(w - 16, h - 16)
+        self._stop_btn.move(w - 76, 5)
         self._close_btn.move(w - 28, 4)
 
     def paintEvent(self, _event):
@@ -298,7 +357,7 @@ def main():
     log.info("=" * 40)
     log.info("  桌面字幕已就绪")
     log.info("  拖动移动位置 | 双击切换颜色")
-    log.info("  右上角 ✕ 关闭 | 右下角拖拽缩放")
+    log.info("  右上角 暂停/开始 | ✕ 关闭 | 右下角缩放")
     log.info("=" * 40)
 
     sys.exit(app.exec_())

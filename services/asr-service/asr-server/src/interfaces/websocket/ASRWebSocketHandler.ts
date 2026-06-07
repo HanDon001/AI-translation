@@ -160,7 +160,7 @@ export class ASRWebSocketHandler {
       if (!text) return;
 
       const version = this.translateVersion;
-      const translated = await this.translateText(text, state.getSourceLang(), state.getTargetLang(), state.getContext());
+      const translated = await this.translateText(text, state.getSourceLang(), state.getTargetLang(), state.getApiKey(), state.getContext());
 
       if (version !== this.translateVersion) {
         console.log(`[ASR] Discard stale partial (v${version})`);
@@ -211,7 +211,7 @@ export class ASRWebSocketHandler {
               return;
             }
 
-            const translated = await this.translateText(text, state.getSourceLang(), state.getTargetLang(), state.getContext());
+            const translated = await this.translateText(text, state.getSourceLang(), state.getTargetLang(), state.getApiKey(), state.getContext());
             state.addContext(text, translated);
             ws.send(JSON.stringify({
               type: 'subtitle_patch',
@@ -292,7 +292,7 @@ export class ASRWebSocketHandler {
     }
   }
 
-  private async translateText(text: string, sourceLang: string, targetLang: string, context?: Array<{ src: string; tgt: string }>): Promise<string> {
+  private async translateText(text: string, sourceLang: string, targetLang: string, apiKey: string, context?: Array<{ src: string; tgt: string }>): Promise<string> {
     if (sourceLang === targetLang) return text;
     if (!text.trim()) return text;
 
@@ -304,7 +304,7 @@ export class ASRWebSocketHandler {
         const resp = await fetch('http://localhost:3002/translate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, sourceLang, targetLang, context, apiKey: state.getApiKey() }),
+          body: JSON.stringify({ text, sourceLang, targetLang, context, apiKey }),
           signal: controller.signal,
         });
         clearTimeout(timer);

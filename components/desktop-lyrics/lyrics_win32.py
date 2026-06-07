@@ -40,6 +40,33 @@ class SignalBridge(QObject):
     visibility_changed = pyqtSignal(bool)
 
 
+class CloseButton(QLabel):
+    """关闭按钮"""
+    clicked = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__("✕", parent)
+        self.setFixedSize(24, 24)
+        self.setAlignment(Qt.AlignCenter)
+        self.setFont(QFont("Microsoft YaHei", 12, QFont.Bold))
+        self.setStyleSheet("""
+            QLabel {
+                color: rgba(255, 255, 255, 100);
+                background: transparent;
+            }
+            QLabel:hover {
+                color: rgba(255, 255, 255, 240);
+                background: rgba(255, 80, 80, 180);
+                border-radius: 4px;
+            }
+        """)
+        self.setCursor(Qt.PointingHandCursor)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit()
+
+
 class DesktopLyrics(QWidget):
     def __init__(self, signals: SignalBridge):
         super().__init__()
@@ -81,6 +108,10 @@ class DesktopLyrics(QWidget):
 
         layout.addWidget(self.label_main)
         layout.addWidget(self.label_sub)
+
+        # 右上角关闭按钮（手动定位 → 隐藏窗口，通过 Web 控制台可重新显示）
+        self._close_btn = CloseButton(self)
+        self._close_btn.clicked.connect(lambda: self.signals.visibility_changed.emit(False))
 
         # 右下角拖拽缩放手柄（手动定位）
         self._grip = QSizeGrip(self)
@@ -148,8 +179,11 @@ class DesktopLyrics(QWidget):
         self.signals.color_changed.emit(self.color_idx + 1)
 
     def resizeEvent(self, _event):
-        """窗口大小变化时，把手柄定位到右下角"""
-        self._grip.move(self.width() - 16, self.height() - 16)  # type: ignore[union-attr]
+        """窗口大小变化时，把手柄定位到右下角，关闭按钮定位到右上角"""
+        w = self.width()  # type: ignore[union-attr]
+        h = self.height()  # type: ignore[union-attr]
+        self._grip.move(w - 16, h - 16)
+        self._close_btn.move(w - 28, 4)
 
     def paintEvent(self, _event):
         """绘制统一的半透明黑色圆角背景"""
@@ -264,6 +298,7 @@ def main():
     log.info("=" * 40)
     log.info("  桌面字幕已就绪")
     log.info("  拖动移动位置 | 双击切换颜色")
+    log.info("  右上角 ✕ 关闭 | 右下角拖拽缩放")
     log.info("=" * 40)
 
     sys.exit(app.exec_())

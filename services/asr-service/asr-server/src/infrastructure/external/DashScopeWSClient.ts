@@ -23,9 +23,11 @@ export class DashScopeWSClient {
 
   /**
    * 连接到 DashScope ASR 服务
+   * @param language 源语言代码，如 'en'、'zh'、'ja'，传给 ASR 模型做语言适配
    */
-  async connect(apiKey: string, model: string): Promise<void> {
-    const url = `wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=${model}`;
+  async connect(apiKey: string, model: string, language?: string): Promise<void> {
+    const langParam = language ? `&language=${language}` : '';
+    const url = `wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=${model}${langParam}`;
 
     return new Promise((resolve, reject) => {
       this.ws = new WebSocket(url, {

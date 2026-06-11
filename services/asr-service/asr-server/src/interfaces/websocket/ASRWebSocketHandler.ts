@@ -267,7 +267,7 @@ export class ASRWebSocketHandler {
           this.sendError(ws, `ASR 服务错误: ${err.message}`);
         });
 
-        await client.connect(key, DEFAULT_MODEL);
+        await client.connect(key, DEFAULT_MODEL, state.getSourceLang());
         state.setClient(client);
 
         ws.send(JSON.stringify({ type: 'auth_success' }));
